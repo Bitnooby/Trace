@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Trace — Evidence, not verdicts</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;450;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --paper:#F4F6F9; --card:#FFFFFF; --ink:#131722; --graphite:#586273;
+    --faint:#8A95A4; --line:#E6EAF0; --line-strong:#D3DAE3;
+    --signal:#0B6E6E; --signal-bright:#13A8A8; --signal-wash:#E6F4F4; --signal-line:#C5E5E5;
+    --ok:#1C8A57; --ok-wash:#E6F3EC; --warn:#B0720B; --warn-wash:#FAF0DD;
+    --flag:#B83A2B; --flag-wash:#FAE9E6; --ai:#5B4BC4; --ai-wash:#EDEBFA; --srv:#41507E; --srv-wash:#EDF0FA;
+    --shadow:0 1px 2px rgba(19,23,34,.04),0 10px 30px rgba(19,23,34,.07);
+    --shadow-sm:0 1px 2px rgba(19,23,34,.05);
+    --mono:'IBM Plex Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+    --display:'Space Grotesk',system-ui,sans-serif; --body:'Inter',system-ui,sans-serif;
+    --r:14px;
+  }
+  *{box-sizing:border-box} html,body{margin:0;padding:0}
+  body{background:var(--paper);color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.5;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+  .wrap{max-width:800px;margin:0 auto;padding:0 22px} svg{display:block}
+
+  header.mast{padding:40px 0 22px}
+  .mark{display:flex;align-items:center;gap:11px}
+  .glyph{width:32px;height:32px;flex:0 0 auto;border-radius:8px;background:linear-gradient(150deg,var(--signal),var(--signal-bright));position:relative;box-shadow:0 3px 10px rgba(11,110,110,.3)}
+  .glyph::before{content:"";position:absolute;inset:0;border-radius:8px;background:linear-gradient(transparent 45%,rgba(255,255,255,.9) 47%,rgba(255,255,255,.9) 53%,transparent 55%),radial-gradient(circle at 50% 50%,rgba(255,255,255,.95) 2px,transparent 2.7px)}
+  .wordmark{font-family:var(--display);font-weight:700;font-size:21px;letter-spacing:.17em;text-transform:uppercase}
+  .badge{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--faint);border:1px solid var(--line);border-radius:20px;padding:4px 10px}
+  .tagline{margin:22px 0 0;font-family:var(--display);font-weight:600;font-size:clamp(28px,5.4vw,42px);line-height:1.08;letter-spacing:-.02em}
+  .tagline em{font-style:normal;color:var(--signal)}
+  .sub{margin:15px 0 0;color:var(--graphite);font-size:16.5px;max-width:62ch}
+
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow);margin-top:26px;overflow:hidden}
+  .drop{padding:24px;display:flex;flex-direction:column;gap:15px}
+  .dropzone{border:1.5px dashed var(--line-strong);border-radius:13px;padding:34px 22px;text-align:center;cursor:pointer;transition:border-color .15s,background .15s;background:#FBFCFE}
+  .dropzone:hover{border-color:var(--signal-bright);background:var(--signal-wash)}
+  .dropzone.drag{border-color:var(--signal);background:var(--signal-wash);transform:scale(1.005)}
+  .dz-ic{width:40px;height:40px;margin:0 auto 12px;color:var(--signal)}
+  .dz-title{font-family:var(--display);font-weight:600;font-size:17px}
+  .dz-sub{color:var(--faint);font-size:13.5px;margin-top:5px}
+  .or{display:flex;align-items:center;gap:12px;color:var(--faint);font-size:13px}
+  .or::before,.or::after{content:"";height:1px;background:var(--line);flex:1}
+  .linkrow{display:flex;gap:9px}
+  .linkrow input{flex:1;border:1px solid var(--line-strong);border-radius:11px;padding:13px;font-family:var(--mono);font-size:13.5px;color:var(--ink);background:#fff;min-width:0}
+  .linkrow input:focus{outline:2px solid var(--signal-bright);outline-offset:1px;border-color:transparent}
+  .btn{font-family:var(--display);font-weight:600;font-size:14.5px;border:none;border-radius:11px;padding:13px 19px;cursor:pointer;background:var(--ink);color:#fff;white-space:nowrap;transition:transform .08s,opacity .15s}
+  .btn:hover{opacity:.93}.btn:active{transform:translateY(1px)}
+  .btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--line-strong)}
+  .hint{display:flex;align-items:center;gap:7px;color:var(--faint);font-size:13px;justify-content:center}
+  .dot{width:6px;height:6px;border-radius:50%;background:var(--ok);box-shadow:0 0 0 3px var(--ok-wash)}
+  .tip{margin-top:2px;font-size:13px;color:var(--faint);text-align:center}
+  .tip b{color:var(--graphite);font-weight:500}
+
+  #dossier{margin-top:24px;display:none}
+  #dossier.show{display:block;animation:rise .4s ease both}
+  @keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+  .doss-head{display:flex;gap:18px;padding:22px;border-bottom:1px solid var(--line);align-items:flex-start}
+  .preview{position:relative;width:140px;height:140px;flex:0 0 auto;border-radius:12px;overflow:hidden;background:#0c1016;border:1px solid var(--line)}
+  .preview img{width:100%;height:100%;object-fit:cover;display:block}
+  .scanline{position:absolute;left:0;right:0;height:40%;pointer-events:none;background:linear-gradient(transparent,rgba(19,168,168,.3),rgba(19,168,168,.85),rgba(19,168,168,.3),transparent);box-shadow:0 0 16px rgba(19,168,168,.7);animation:scan 1.1s ease-in-out 2;opacity:0;top:-40%}
+  .scanning .scanline{opacity:1}
+  @keyframes scan{0%{top:-40%}100%{top:100%}}
+  .doss-meta{flex:1;min-width:0}
+  .doss-file{font-family:var(--mono);font-size:12.5px;color:var(--graphite);word-break:break-all;line-height:1.4}
+  .doss-h{font-family:var(--display);font-weight:600;font-size:20px;margin:3px 0 11px}
+  .chips{display:flex;flex-wrap:wrap;gap:7px}
+  .factchip{font-family:var(--mono);font-size:11.5px;color:var(--graphite);background:var(--paper);border:1px solid var(--line);border-radius:7px;padding:4px 9px}
+  .factchip.hash{color:var(--signal);border-color:var(--signal-line);background:var(--signal-wash)}
+
+  .ledger{padding:18px 22px;border-bottom:1px solid var(--line);background:linear-gradient(180deg,#FCFDFE,#fff)}
+  .ledger-top{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:14px}
+  .ledger-title{font-family:var(--display);font-weight:600;font-size:13px;letter-spacing:.1em;text-transform:uppercase;color:var(--graphite)}
+  .ledger-note{font-size:12px;color:var(--faint)}
+  .meters{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+  .meter-lab{font-family:var(--display);font-weight:500;font-size:12.5px;color:var(--graphite);margin-bottom:7px}
+  .segs{display:flex;gap:3px;margin-bottom:6px}
+  .seg{height:6px;flex:1;border-radius:2px;background:var(--line)}
+  .seg.on{background:var(--signal-bright)}
+  .seg.srv{background:repeating-linear-gradient(45deg,var(--srv) 0 3px,transparent 3px 6px);opacity:.5}
+  .meter-stat{font-family:var(--mono);font-size:11px;color:var(--ink)}
+  .meter-stat.muted{color:var(--faint)}
+
+  .transparency{margin:16px 22px 0;background:var(--signal-wash);border:1px solid var(--signal-line);border-radius:12px;padding:14px 16px;display:flex;gap:11px;align-items:flex-start}
+  .ti{flex:0 0 auto;color:var(--signal)}
+  .transparency p{margin:0;font-size:13.5px;color:#274545;line-height:1.5}
+  .transparency b{font-family:var(--display)}
+
+  .section-label{font-family:var(--display);font-weight:600;font-size:11.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--faint);padding:20px 22px 2px}
+  .row{display:grid;grid-template-columns:24px 1fr auto;gap:13px;padding:15px 22px;border-top:1px solid var(--line);align-items:start}
+  .row:first-of-type{border-top:none}
+  .row-ic{width:24px;height:24px;border-radius:7px;display:flex;align-items:center;justify-content:center;margin-top:1px}
+  .row-ic svg{width:15px;height:15px}
+  .ic-present{background:var(--ok-wash);color:var(--ok)} .ic-absent{background:var(--paper);color:var(--faint)}
+  .ic-caution{background:var(--warn-wash);color:var(--warn)} .ic-signal{background:var(--signal-wash);color:var(--signal)}
+  .ic-ai{background:var(--ai-wash);color:var(--ai)} .ic-srv{background:var(--srv-wash);color:var(--srv)}
+  .row-main{min-width:0}
+  .row-name{font-family:var(--display);font-weight:600;font-size:15px}
+  .row-read{color:var(--graphite);font-size:13.5px;margin-top:4px;line-height:1.5}
+  .row-data{font-family:var(--mono);font-size:12px;color:var(--ink);background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:7px 10px;margin-top:9px;word-break:break-word;white-space:pre-wrap;line-height:1.5}
+  .row-side{display:flex;align-items:flex-end}
+  .state{font-family:var(--mono);font-size:10.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;padding:4px 9px;border-radius:20px;white-space:nowrap}
+  .state.present{background:var(--ok-wash);color:var(--ok)} .state.absent{background:var(--paper);color:var(--faint);border:1px solid var(--line)}
+  .state.caution{background:var(--warn-wash);color:var(--warn)} .state.signal{background:var(--signal-wash);color:var(--signal)}
+  .state.ai{background:var(--ai-wash);color:var(--ai)} .state.srv{background:var(--srv-wash);color:var(--srv)}
+  .row,.section-label{opacity:0;transform:translateY(7px)}
+  .revealed .row,.revealed .section-label{opacity:1;transform:none;transition:opacity .35s,transform .35s}
+
+  .footer-actions{padding:22px;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:16px}
+  .share-lab{font-family:var(--display);font-weight:600;font-size:11.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);margin-bottom:-4px}
+  .share-card{border:1px solid var(--line-strong);border-radius:13px;overflow:hidden;box-shadow:var(--shadow-sm)}
+  .sc-top{display:flex;gap:12px;padding:13px;align-items:center;background:#fff}
+  .sc-thumb{width:52px;height:52px;border-radius:9px;object-fit:cover;flex:0 0 auto;background:#0c1016;border:1px solid var(--line)}
+  .sc-body{min-width:0;flex:1}
+  .sc-mark{display:flex;align-items:center;gap:6px;font-family:var(--display);font-weight:700;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--signal)}
+  .sc-mini{width:13px;height:13px;border-radius:3px;background:linear-gradient(150deg,var(--signal),var(--signal-bright))}
+  .sc-title{font-family:var(--display);font-weight:600;font-size:14px;margin:3px 0 1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .sc-desc{font-size:12.5px;color:var(--graphite);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .sc-url{font-family:var(--mono);font-size:11px;color:var(--faint);padding:9px 13px;border-top:1px solid var(--line);background:var(--paper);display:flex;align-items:center;gap:7px}
+  .share-row{display:flex;gap:9px;align-items:center}
+  .share-row .url{font-family:var(--mono);font-size:12.5px;color:var(--graphite);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:11px 12px}
+  .recheck{display:flex;gap:10px;flex-wrap:wrap}
+
+  .disclaim{color:var(--faint);font-size:12.5px;text-align:center;padding:26px 4px 48px;line-height:1.7}
+  .disclaim code{font-family:var(--mono);background:#fff;border:1px solid var(--line);border-radius:5px;padding:1px 6px;color:var(--graphite)}
+
+  @media (max-width:580px){
+    .doss-head{flex-direction:column}.preview{width:100%;height:200px}
+    .meters{grid-template-columns:repeat(2,1fr)}
+    .row{grid-template-columns:24px 1fr;gap:11px}.row-side{grid-column:2;justify-content:flex-start}
+  }
+  @media (prefers-reduced-motion:reduce){.scanline,#dossier.show{animation:none}.row,.section-label{opacity:1;transform:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="mast">
+    <div class="mark">
+      <div class="glyph" aria-hidden="true"></div>
+      <span class="wordmark">Trace</span>
+      <span class="badge" id="modeBadge">prototype</span>
+    </div>
+    <h1 class="tagline">Is it real? <em>Show the evidence.</em></h1>
+    <p class="sub">Drop in a suspicious image. Trace reads what the file itself reveals — proof of origin, the camera that shot it, whether it's been edited — and hands you the evidence with the reasoning. You make the call.</p>
+  </header>
+
+  <section class="panel" id="submitPanel">
+    <div class="drop">
+      <div class="dropzone" id="dropzone" tabindex="0" role="button" aria-label="Upload an image to check">
+        <svg class="dz-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/><path d="M11 8v6M8 11h6"/></svg>
+        <div class="dz-title">Drop an image here, or tap to choose</div>
+        <div class="dz-sub">JPEG · PNG · WebP — read in your browser, never uploaded</div>
+        <input type="file" id="fileInput" accept="image/*" hidden />
+      </div>
+      <div class="or">or paste a link to where you saw it</div>
+      <div class="linkrow">
+        <input type="text" id="linkInput" placeholder="https://x.com/.../status/..." />
+        <button class="btn" id="linkBtn">Check link</button>
+      </div>
+      <div class="hint"><span class="dot"></span> No sign-up · nothing leaves your device for the file checks</div>
+      <div class="tip">Try it: drop a <b>photo straight off your phone</b>, then a <b>screenshot or saved meme</b> — watch the reports come out different.</div>
+    </div>
+  </section>
+
+  <section class="panel" id="dossier" aria-live="polite">
+    <div class="doss-head">
+      <div class="preview" id="preview"><img id="previewImg" alt="Submitted image preview" /><div class="scanline"></div></div>
+      <div class="doss-meta">
+        <div class="doss-file" id="fileName">—</div>
+        <div class="doss-h">Evidence report</div>
+        <div class="chips" id="factChips"></div>
+      </div>
+    </div>
+
+    <div class="ledger">
+      <div class="ledger-top">
+        <span class="ledger-title">What Trace could establish</span>
+        <span class="ledger-note">More signal = more to verify against, not proof of truth</span>
+      </div>
+      <div class="meters" id="meters"></div>
+    </div>
+
+    <div class="transparency">
+      <svg class="ti" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 16v-4M12 8h.01"/></svg>
+      <p><b>This is evidence, not a verdict.</b> Missing camera data doesn't prove a fake — screenshots and re-saves strip it. Present data can be forged. Weigh the signals; don't hand the judgment to a machine.</p>
+    </div>
+
+    <div id="rows"></div>
+
+    <div class="footer-actions">
+      <div>
+        <div class="share-lab">What people see when you share it</div>
+        <div class="share-card">
+          <div class="sc-top">
+            <img class="sc-thumb" id="scThumb" alt="" />
+            <div class="sc-body">
+              <div class="sc-mark"><span class="sc-mini"></span> Trace · Evidence report</div>
+              <div class="sc-title" id="scTitle">Evidence report</div>
+              <div class="sc-desc" id="scDesc">Provenance, camera origin & edits traced</div>
+            </div>
+          </div>
+          <div class="sc-url"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg><span id="scUrl">trace.app/check/—</span></div>
+        </div>
+      </div>
+      <div class="share-row">
+        <span class="url" id="shareUrl">https://trace.app/check/—</span>
+        <button class="btn ghost" id="copyBtn">Copy link</button>
+      </div>
+      <div class="recheck">
+        <button class="btn" id="againBtn">Check another image</button>
+        <button class="btn ghost" id="resetBtn">Clear</button>
+      </div>
+    </div>
+  </section>
+
+  <p class="disclaim">
+    These checks <b>actually run</b> on your image, in your browser: <code>fingerprint</code> · <code>metadata</code> · <code>content credentials</code> · <code>edit traces</code> · <code>AI markers</code>.<br/>
+    <code>reverse image search</code> and <code>known-fake database</code> turn on automatically once this is deployed with a server (and their API keys).
+  </p>
+</div>
+
+<script>
+/* ============================================================
+   Trace — real client-side evidence engine.
+   Every finding is read from the actual bytes of the file. Nothing faked.
+
+   SERVER CONNECTION (no editing needed):
+   - Opened as a local file  -> standalone mode (file checks only).
+   - Served by the Trace server (after you deploy) -> it auto-talks to its
+     own address: web cross-checks + real shareable /check/:id links turn on.
+   - Optional override: set TRACE_SERVER to a URL to force a specific server.
+   ============================================================ */
+const TRACE_SERVER = ""; // optional override, e.g. "https://your-trace.onrender.com"
+function apiBase(){
+  if(TRACE_SERVER) return TRACE_SERVER.replace(/\/$/,'');
+  if(location.protocol.startsWith('http')) return location.origin;  // served by a server
+  return null; // file:// → standalone
+}
+
+const $ = s => document.querySelector(s);
+const fileInput=$('#fileInput'), dropzone=$('#dropzone'), dossier=$('#dossier'), rowsEl=$('#rows');
+
+const ICON = {
+  present:'<path d="M20 6 9 17l-5-5"/>',
+  absent:'<path d="M5 12h14"/>',
+  caution:'<path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/>',
+  signal:'<path d="M12 2v4M12 18v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M2 12h4M18 12h4M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8"/>',
+  ai:'<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 9h6v6H9zM2 9h2M2 15h2M20 9h2M20 15h2M9 2v2M15 2v2M9 20v2M15 20v2"/>',
+  srv:'<rect x="3" y="4" width="18" height="7" rx="1.5"/><rect x="3" y="13" width="18" height="7" rx="1.5"/><path d="M7 7.5h.01M7 16.5h.01"/>'
+};
+const svg = k => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICON[k]}</svg>`;
+
+function readExif(buf){
+  const v=new DataView(buf), out={};
+  if(v.byteLength<4||v.getUint16(0)!==0xFFD8) return out;
+  let off=2;
+  while(off<v.byteLength){
+    if(v.getUint16(off)!==0xFFE1){ if((v.getUint16(off)&0xFF00)!==0xFF00) break; off+=2+v.getUint16(off+2); continue; }
+    const ex=off+4; if(v.getUint32(ex)!==0x45786966){ off+=2+v.getUint16(off+2); continue; }
+    const tiff=ex+6, little=v.getUint16(tiff)===0x4949;
+    const r16=o=>v.getUint16(o,little), r32=o=>v.getUint32(o,little);
+    const ifd0=tiff+r32(tiff+4);
+    const readTag=e=>{const t=r16(e+2),c=r32(e+4),sz={1:1,2:1,3:2,4:4,5:8,7:1};const b=(sz[t]||1)*c;let o=e+8;if(b>4)o=tiff+r32(e+8);
+      if(t===2){let s='';for(let i=0;i<c-1;i++){const ch=v.getUint8(o+i);if(ch===0)break;s+=String.fromCharCode(ch);}return s.trim();}
+      if(t===3)return r16(o); if(t===4)return r32(o); if(t===5){const n=r32(o),d=r32(o+4);return d?n/d:n;} return null;};
+    const walk=(ifd,map)=>{const n=r16(ifd);for(let i=0;i<n;i++){const e=ifd+2+i*12,tag=r16(e);if(map[tag])out[map[tag]]=readTag(e);if(tag===0x8769)out.__ex=tiff+r32(e+8);if(tag===0x8825)out.__gps=true;}};
+    walk(ifd0,{0x010F:'make',0x0110:'model',0x0131:'software',0x0132:'datetime',0x0112:'orientation'});
+    if(out.__ex)walk(out.__ex,{0x9003:'dateOriginal',0x9004:'dateDigitized',0xA434:'lensModel',0x920A:'focalLength'});
+    break;
+  }
+  return out;
+}
+function scanBytes(buf){
+  const b=new Uint8Array(buf),cap=Math.min(b.length,2500000);let s='';
+  for(let i=0;i<cap;i++){const c=b[i];s+=(c>=32&&c<127)?String.fromCharCode(c):'\u0000';}
+  const low=s.toLowerCase(), has=a=>a.find(k=>low.includes(k));
+  return{
+    c2pa:has(['jumbf','c2pa.manifest','urn:uuid:c2pa','contentauth','c2pa.assertions','c2pa']),
+    ai:has(['midjourney','stable diffusion','stable-diffusion','dall-e','dall·e','adobe firefly','firefly','imagined with ai','made with google ai','sora','flux.1','ideogram','gpt-image']),
+    editor:has(['adobe photoshop','photoshop','gimp','lightroom','canva','figma','pixelmator','affinity photo','snapseed','picsart','paint.net','luminar'])
+  };
+}
+async function sha256(buf){ try{ const h=await crypto.subtle.digest('SHA-256',buf); return Array.from(new Uint8Array(h)).map(x=>x.toString(16).padStart(2,'0')).join(''); }catch(e){ return null; } }
+function dims(file){return new Promise(res=>{const img=new Image(),u=URL.createObjectURL(file);img.onload=()=>res({w:img.naturalWidth,h:img.naturalHeight,url:u});img.onerror=()=>res({w:0,h:0,url:u});img.src=u;});}
+const fmtSize=b=>b<1024?b+' B':b<1048576?(b/1024).toFixed(0)+' KB':(b/1048576).toFixed(2)+' MB';
+const esc=t=>(t==null?'':String(t)).replace(/[<>&]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
+
+let lastFile=null, lastHash=null;
+
+async function analyze(file){
+  lastFile=file;
+  const buf=await file.arrayBuffer();
+  const exif=readExif(buf), scan=scanBytes(buf), d=await dims(file), hash=await sha256(buf);
+  lastHash=hash;
+
+  $('#previewImg').src=d.url; $('#scThumb').src=d.url;
+  $('#fileName').textContent=file.name+'  ·  '+(file.type||'unknown type');
+  $('#preview').classList.add('scanning');
+
+  $('#factChips').innerHTML=[
+    `<span class="factchip">${esc(fmtSize(file.size))}</span>`,
+    `<span class="factchip">${d.w?d.w+'×'+d.h+' px':'size unreadable'}</span>`,
+    `<span class="factchip">${esc((file.type||'').split('/')[1]?.toUpperCase()||'RAW')}</span>`,
+    hash?`<span class="factchip hash">sha256 ${hash.slice(0,10)}…</span>`:''
+  ].join('');
+
+  const cam=[exif.make,exif.model].filter(Boolean).join(' ').trim();
+  const when=exif.dateOriginal||exif.datetime||exif.dateDigitized;
+  const sw=exif.software||scan.editor;
+  const serverOn=apiBase()!==null;
+
+  const camScore=(cam?1:0)+(when?1:0)+(exif.__gps?1:0);
+  const meters=[
+    {lab:'Provenance', on:(scan.c2pa?2:0)+(scan.ai?1:0), max:3, stat: scan.c2pa?'Credentials found':(scan.ai?'AI marker found':'None found')},
+    {lab:'Camera origin', on:camScore, max:3, stat: camScore?`${camScore}/3 on record`:'Not recorded'},
+    {lab:'Editing', on: sw?2:0, max:3, stat: sw?'Trace detected':'None found'},
+    {id:'m-web', lab:'Web cross-check', on:0, max:3, srv:true, stat: serverOn?'Checking…':'Local only'}
+  ];
+  $('#meters').innerHTML=meters.map(m=>{
+    let segs='';for(let i=0;i<m.max;i++)segs+=`<span class="seg ${i<m.on?'on':''} ${m.srv&&i>=m.on?'srv':''}"></span>`;
+    return `<div ${m.id?`id="${m.id}"`:''}><div class="meter-lab">${m.lab}</div><div class="segs">${segs}</div><div class="meter-stat ${m.on?'':'muted'}">${esc(m.stat)}</div></div>`;
+  }).join('');
+
+  const F=[{section:'Proof of origin'}];
+  F.push(scan.c2pa
+    ? {ic:'present',name:'Content Credentials',state:['present','Found'],read:'Carries a Content Credentials (C2PA) manifest — a tamper-evident record of how it was made and edited. Most ordinary images have none; full cryptographic validation needs a verifier.',data:'C2PA / JUMBF provenance manifest detected'}
+    : {ic:'absent',name:'Content Credentials',state:['absent','None'],read:'No provenance manifest. Normal for most images today — absence proves nothing on its own.',data:'No C2PA manifest present'});
+  F.push(scan.ai
+    ? {ic:'ai',name:'AI-origin marker',state:['ai','Detected'],read:'A signature tied to an AI image generator is embedded in the file. A strong positive signal the image was AI-generated.',data:'AI tool signature: “'+esc(scan.ai)+'”'}
+    : {ic:'absent',name:'AI-origin marker',state:['absent','None'],read:'No AI-generator signature in the file. Most AI tools embed nothing, so absence is NOT evidence the image is real.',data:'No embedded AI-generator marker'});
+
+  F.push({section:'Camera origin'});
+  F.push(cam
+    ? {ic:'present',name:'Capture device',state:['present','On record'],read:'Records the camera that captured it — consistent with a real device photo (though device tags can be edited).',data:'Make/Model: '+esc(cam)+(exif.lensModel?'\nLens: '+esc(exif.lensModel):'')+(exif.focalLength?'\nFocal: '+Math.round(exif.focalLength)+'mm':'')}
+    : {ic:'caution',name:'Capture device',state:['caution','Not recorded'],read:'No camera make/model. Typical of screenshots, downloads, re-saves, and most AI images — but also of anything a platform stripped. Inconclusive alone.',data:'No camera Make/Model tags'});
+  F.push(when
+    ? {ic:'present',name:'Capture time',state:['present','On record'],read:'Claims when the shot was taken. Cross-check against when it started circulating — a mismatch is worth a closer look.',data:'Timestamp: '+esc(when)}
+    : {ic:'absent',name:'Capture time',state:['absent','None'],read:'No capture timestamp. Often stripped on upload; not meaningful alone.',data:'No DateTimeOriginal tag'});
+  F.push({ic:exif.__gps?'present':'absent',name:'Location data',state:exif.__gps?['present','Embedded']:['absent','None'],read:exif.__gps?'GPS coordinates are embedded — a real location fingerprint to verify against the claimed scene.':'No GPS. Routinely removed by phones and platforms for privacy; absence is expected.',data:exif.__gps?'GPS tags present in EXIF':'No GPS tags'});
+
+  F.push({section:'Edits & handling'});
+  F.push(sw
+    ? {ic:'caution',name:'Editing software',state:['caution','Detected'],read:'Passed through editing software. Editing is normal and not proof of deception — but the pixels aren\'t straight-out-of-camera.',data:'Software trace: '+esc(sw)}
+    : {ic:'absent',name:'Editing software',state:['absent','None found'],read:'No editor signature in metadata. A determined editor can remove this, so it\'s not a guarantee.',data:'No editor software tags'});
+  const hasMeta=cam||when||exif.__gps;
+  F.push({ic:hasMeta?'present':'caution',name:'Metadata completeness',state:hasMeta?['present','Intact']:['caution','Stripped'],read:hasMeta?'Retains original metadata — more for you to verify against.':'Metadata largely absent — consistent with a screenshot, social re-upload, or generated image. Describes handling, not whether the content is true.',data:'Present: '+([cam&&'device',when&&'time',exif.__gps&&'gps',sw&&'software',exif.orientation&&'orientation'].filter(Boolean).join(', ')||'none')});
+
+  F.push({section:'Cross-checks — server'});
+  F.push({id:'r-reverse',ic:'srv',name:'Reverse image search',state:['srv', serverOn?'Checking…':'Local only'],read:'Find everywhere this image appears and the earliest known copy — the single best signal for catching recycled or miscaptioned images.',data: serverOn?'Querying the connected server…':'Open this on the deployed server to run web checks.'});
+  F.push({id:'r-fact',ic:'srv',name:'Known-fake database',state:['srv', serverOn?'Checking…':'Local only'],read:'Check whether fact-checkers already debunked this exact image (matched by fingerprint + found captions).',data: serverOn?'Querying the connected server…':'Open this on the deployed server to run web checks.'});
+
+  renderRows(F,hash,serverOn);
+  if(serverOn) publishToServer(file,hash,F).catch(()=>{});
+}
+
+function renderRows(F,hash,serverOn){
+  rowsEl.innerHTML=F.map(f=>{
+    if(f.section)return `<div class="section-label">${esc(f.section)}</div>`;
+    const[cls,label]=f.state;
+    return `<div class="row" ${f.id?`id="${f.id}"`:''}><div class="row-ic ic-${f.ic}">${svg(f.ic)}</div><div class="row-main"><div class="row-name">${esc(f.name)}</div><div class="row-read">${esc(f.read)}</div><div class="row-data">${esc(f.data)}</div></div><div class="row-side"><span class="state ${cls}">${esc(label)}</span></div></div>`;
+  }).join('');
+  // preview link until a real one comes back from the server
+  const id=(hash?hash.slice(0,6):Math.random().toString(36).slice(2,8));
+  $('#scUrl').textContent='trace.app/check/'+id;
+  $('#shareUrl').textContent='https://trace.app/check/'+id;
+  dossier.classList.add('show'); $('#submitPanel').style.display='none';
+  dossier.scrollIntoView({behavior:'smooth',block:'start'});
+  setTimeout(()=>rowsEl.classList.add('revealed'),60);
+  setTimeout(()=>$('#preview').classList.remove('scanning'),2300);
+}
+
+function setRow(id,{ic,state,read,data}){
+  const el=document.getElementById(id); if(!el) return;
+  const[cls,label]=state;
+  el.querySelector('.row-ic').className='row-ic ic-'+ic; el.querySelector('.row-ic').innerHTML=svg(ic);
+  if(read!=null) el.querySelector('.row-read').textContent=read;
+  if(data!=null) el.querySelector('.row-data').textContent=data;
+  el.querySelector('.state').className='state '+cls; el.querySelector('.state').textContent=label;
+}
+function setWebMeter(on,stat){
+  const m=document.getElementById('m-web'); if(!m) return;
+  const segs=m.querySelectorAll('.seg'); segs.forEach((s,i)=>{s.className='seg '+(i<on?'on':(i>=on?'srv':''));});
+  const st=m.querySelector('.meter-stat'); st.textContent=stat; st.className='meter-stat '+(on?'':'muted');
+}
+
+/* talks to the Trace server's own address; upgrades rows + share link on success */
+async function publishToServer(file,hash,localFindings){
+  const base=apiBase(); if(!base) return;
+  const fd=new FormData(); fd.append('image',file); fd.append('sha256',hash||''); fd.append('findings',JSON.stringify(localFindings));
+  let j;
+  try{ const r=await fetch(base+'/api/publish',{method:'POST',body:fd}); j=await r.json(); }
+  catch(e){ return; } // e.g. preview sandbox with no server → leave honest placeholders
+  if(!j||!j.id) return;
+
+  const link=base+'/check/'+j.id;
+  $('#shareUrl').textContent=link;
+  $('#scUrl').textContent=link.replace(/^https?:\/\//,'');
+
+  const rev=j.reverse||{};
+  if(rev.connected){
+    const e=rev.earliest;
+    setRow('r-reverse',{ic:'signal',state:['signal','Checked'],read:'Searched the web for other copies of this image.',data:`Found across ${rev.count||0} place(s).`+(e?` Earliest copy: ${e.source||''} ${e.date||''}`:' No dated earliest copy identified.')});
+    setWebMeter(Math.min(3,(rev.count?2:1)),'Checked');
+  } else {
+    setRow('r-reverse',{ic:'srv',state:['srv','Add key'],read:'Server is live, but the reverse-search key isn\'t set yet (Phase 2).',data: rev.note||'Set SERPAPI_KEY to enable.'});
+    setWebMeter(0,'Key not set');
+  }
+  const fc=j.fact||{};
+  if(fc.connected && (fc.claims||[]).length){
+    const txt=fc.claims.map(c=>`${c.publisher||''}: ${c.rating||''}`).join(' · ');
+    setRow('r-fact',{ic:'caution',state:['caution','Matches'],read:'Fact-checkers have addressed claims tied to this image.',data:txt});
+  } else if(fc.connected){
+    setRow('r-fact',{ic:'present',state:['present','Clear'],read:'No matching debunk found by the fact-check source.',data:'No fact-check matches.'});
+  } else {
+    setRow('r-fact',{ic:'srv',state:['srv','Add key'],read:'Server is live, but the fact-check key isn\'t set yet (Phase 2).',data: fc.note||'Set FACTCHECK_KEY to enable.'});
+  }
+}
+
+/* wiring */
+function handleFile(file){ if(!file||!file.type.startsWith('image/')){alert('Please choose an image file (JPEG, PNG, or WebP).');return;} rowsEl.classList.remove('revealed'); analyze(file); }
+dropzone.addEventListener('click',()=>fileInput.click());
+dropzone.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();fileInput.click();}});
+fileInput.addEventListener('change',e=>handleFile(e.target.files[0]));
+['dragenter','dragover'].forEach(ev=>dropzone.addEventListener(ev,e=>{e.preventDefault();dropzone.classList.add('drag');}));
+['dragleave','drop'].forEach(ev=>dropzone.addEventListener(ev,e=>{e.preventDefault();dropzone.classList.remove('drag');}));
+dropzone.addEventListener('drop',e=>handleFile(e.dataTransfer.files[0]));
+$('#linkBtn').addEventListener('click',()=>{const u=$('#linkInput').value.trim();if(!u){$('#linkInput').focus();return;}alert('Pasting a link needs the server to fetch the image from another site. Once deployed, this will work; for now, save the image and drop it above to run the real file checks.');});
+function reset(){dossier.classList.remove('show');$('#submitPanel').style.display='';$('#linkInput').value='';fileInput.value='';window.scrollTo({top:0,behavior:'smooth'});}
+$('#againBtn').addEventListener('click',reset); $('#resetBtn').addEventListener('click',reset);
+$('#copyBtn').addEventListener('click',()=>{const t=$('#shareUrl').textContent;navigator.clipboard?.writeText(t).then(()=>{const b=$('#copyBtn'),o=b.textContent;b.textContent='Copied';setTimeout(()=>b.textContent=o,1400);});});
+
+/* badge reflects mode */
+(function(){ const b=$('#modeBadge'); if(apiBase()&&!location.protocol.startsWith('file')) { /* served */ } })();
+</script>
+</body>
+</html>
