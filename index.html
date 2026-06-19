@@ -40,8 +40,14 @@
   .dropzone:hover{border-color:var(--signal-bright);background:var(--signal-wash)}
   .dropzone.drag{border-color:var(--signal);background:var(--signal-wash);transform:scale(1.005)}
   .dz-ic{width:40px;height:40px;margin:0 auto 12px;color:var(--signal)}
-  .dz-title{font-family:var(--display);font-weight:600;font-size:17px}
+  .dz-title{font-family:var(--display);font-weight:600;font-size:18px}
   .dz-sub{color:var(--faint);font-size:13.5px;margin-top:5px}
+  .dz-keys{display:flex;align-items:center;justify-content:center;gap:6px;margin-top:12px;flex-wrap:wrap}
+  .kbd{font-family:var(--mono);font-size:12px;font-weight:600;color:var(--ink);background:#fff;border:1px solid var(--line-strong);border-bottom-width:2px;border-radius:6px;padding:3px 8px;line-height:1}
+  .kplus{color:var(--faint);font-size:12px;margin:0 1px}
+  .dz-or2{color:var(--faint);font-size:13px;margin-left:8px}
+  .dropzone.flash{border-color:var(--signal);background:var(--signal-wash);animation:flash .5s ease}
+  @keyframes flash{0%{transform:scale(1)}40%{transform:scale(1.015)}100%{transform:scale(1)}}
   .or{display:flex;align-items:center;gap:12px;color:var(--faint);font-size:13px}
   .or::before,.or::after{content:"";height:1px;background:var(--line);flex:1}
   .linkrow{display:flex;gap:9px}
@@ -145,24 +151,27 @@
       <span class="badge" id="modeBadge">prototype</span>
     </div>
     <h1 class="tagline">Is it real? <em>Show the evidence.</em></h1>
-    <p class="sub">Drop in a suspicious image. Trace reads what the file itself reveals — proof of origin, the camera that shot it, whether it's been edited — and hands you the evidence with the reasoning. You make the call.</p>
+    <p class="sub">Paste, drop, or upload a suspicious image. Trace reads what the file itself reveals — proof of origin, the camera that shot it, whether it's been edited — and hands you the evidence with the reasoning. You make the call.</p>
   </header>
 
   <section class="panel" id="submitPanel">
     <div class="drop">
-      <div class="dropzone" id="dropzone" tabindex="0" role="button" aria-label="Upload an image to check">
-        <svg class="dz-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/><path d="M11 8v6M8 11h6"/></svg>
-        <div class="dz-title">Drop or paste an image, or tap to choose</div>
-        <div class="dz-sub">JPEG · PNG · WebP — or press Ctrl+V to paste an image</div>
+      <div class="dropzone" id="dropzone" tabindex="0" role="button" aria-label="Paste, drop, or upload an image">
+        <svg class="dz-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2.5"/><circle cx="8.5" cy="8.5" r="1.6"/><path d="m21 15-4.5-4.5L5 21"/></svg>
+        <div class="dz-title">Paste your image here</div>
+        <div class="dz-keys">
+          <span class="kbd">Ctrl</span><span class="kplus">+</span><span class="kbd">V</span>
+          <span class="dz-or2">or drag a file · click to browse</span>
+        </div>
         <input type="file" id="fileInput" accept="image/*" hidden />
       </div>
-      <div class="or">or paste a link (direct image or article link)</div>
+      <div class="or">or paste a link (image URL or article)</div>
       <div class="linkrow">
-        <input type="text" id="linkInput" placeholder="https://…/photo.jpg  or a news article link" />
+        <input type="text" id="linkInput" placeholder="https://…/photo.jpg  ·  or an article link" />
         <button class="btn" id="linkBtn">Check link</button>
       </div>
       <div class="hint"><span class="dot"></span> No sign-up · nothing leaves your device for the file checks</div>
-      <div class="tip">On X or anywhere: right-click the image → <b>Copy image</b>, come back and press <b>Ctrl+V</b>. Works even when a link won't.</div>
+      <div class="tip"><b>From X · Instagram · Facebook · anywhere:</b> right-click the image → <b>Copy image</b> → press <b>Ctrl+V</b> here. One tool, every platform.</div>
     </div>
   </section>
 
@@ -435,7 +444,12 @@ window.addEventListener('paste',e=>{
   for(const it of items){
     if(it.type&&it.type.startsWith('image/')){
       const blob=it.getAsFile();
-      if(blob){ e.preventDefault(); handleFile(new File([blob],'pasted-image',{type:blob.type||'image/png'})); return; }
+      if(blob){
+        e.preventDefault();
+        dropzone.classList.add('flash'); setTimeout(()=>dropzone.classList.remove('flash'),500);
+        handleFile(new File([blob],'pasted-image',{type:blob.type||'image/png'}));
+        return;
+      }
     }
   }
 });
@@ -463,6 +477,8 @@ async function checkLink(){
 }
 $('#linkBtn').addEventListener('click',checkLink);
 $('#linkInput').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();checkLink();}});
+/* if a full URL is pasted into the box, just run it */
+$('#linkInput').addEventListener('paste',()=>{ setTimeout(()=>{ const v=$('#linkInput').value.trim(); if(/^https?:\/\/\S+$/i.test(v)) checkLink(); },40); });
 function reset(){dossier.classList.remove('show');$('#submitPanel').style.display='';$('#linkInput').value='';fileInput.value='';window.scrollTo({top:0,behavior:'smooth'});}
 $('#againBtn').addEventListener('click',reset); $('#resetBtn').addEventListener('click',reset);
 $('#copyBtn').addEventListener('click',()=>{const t=$('#shareUrl').textContent;navigator.clipboard?.writeText(t).then(()=>{const b=$('#copyBtn'),o=b.textContent;b.textContent='Copied';setTimeout(()=>b.textContent=o,1400);});});
