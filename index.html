@@ -56,6 +56,9 @@
   .btn{font-family:var(--display);font-weight:600;font-size:14.5px;border:none;border-radius:11px;padding:13px 19px;cursor:pointer;background:var(--ink);color:#fff;white-space:nowrap;transition:transform .08s,opacity .15s}
   .btn:hover{opacity:.93}.btn:active{transform:translateY(1px)}
   .btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--line-strong)}
+  .paste-btn{display:flex;align-items:center;justify-content:center;gap:9px;width:100%;background:var(--signal)}
+  .paste-btn svg{width:17px;height:17px}
+  .kbd-in{font-family:var(--mono);font-size:11px;font-weight:600;background:rgba(255,255,255,.18);border-radius:5px;padding:2px 7px;margin-left:2px}
   .hint{display:flex;align-items:center;gap:7px;color:var(--faint);font-size:13px;justify-content:center}
   .dot{width:6px;height:6px;border-radius:50%;background:var(--ok);box-shadow:0 0 0 3px var(--ok-wash)}
   .tip{margin-top:2px;font-size:13px;color:var(--faint);text-align:center}
@@ -156,22 +159,23 @@
 
   <section class="panel" id="submitPanel">
     <div class="drop">
-      <div class="dropzone" id="dropzone" tabindex="0" role="button" aria-label="Paste, drop, or upload an image">
+      <div class="dropzone" id="dropzone" tabindex="0" role="button" aria-label="Drop or browse for an image">
         <svg class="dz-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2.5"/><circle cx="8.5" cy="8.5" r="1.6"/><path d="m21 15-4.5-4.5L5 21"/></svg>
-        <div class="dz-title">Paste your image here</div>
-        <div class="dz-keys">
-          <span class="kbd">Ctrl</span><span class="kplus">+</span><span class="kbd">V</span>
-          <span class="dz-or2">or drag a file · click to browse</span>
-        </div>
+        <div class="dz-title">Drop an image, or click to browse</div>
+        <div class="dz-sub">JPEG · PNG · WebP</div>
         <input type="file" id="fileInput" accept="image/*" hidden />
       </div>
+      <button class="btn paste-btn" id="pasteBtn" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg>
+        Paste image <span class="kbd-in">Ctrl V</span>
+      </button>
       <div class="or">or paste a link (image URL or article)</div>
       <div class="linkrow">
         <input type="text" id="linkInput" placeholder="https://…/photo.jpg  ·  or an article link" />
-        <button class="btn" id="linkBtn">Check link</button>
+        <button class="btn ghost" id="linkBtn">Check link</button>
       </div>
       <div class="hint"><span class="dot"></span> No sign-up · nothing leaves your device for the file checks</div>
-      <div class="tip"><b>From X · Instagram · Facebook · anywhere:</b> right-click the image → <b>Copy image</b> → press <b>Ctrl+V</b> here. One tool, every platform.</div>
+      <div class="tip"><b>From X · Instagram · Facebook · anywhere:</b> right-click the image → <b>Copy image</b>, then tap <b>Paste</b> (or Ctrl+V). One tool, every platform.</div>
     </div>
   </section>
 
@@ -454,7 +458,26 @@ window.addEventListener('paste',e=>{
   }
 });
 
-/* ----- paste a link: the server fetches the image (direct image or page preview) ----- */
+/* ----- click-to-paste button: reads the image off the clipboard (no keyboard needed) ----- */
+async function pasteFromClipboard(){
+  if(!navigator.clipboard || !navigator.clipboard.read){ alert('Your browser can’t click-to-paste. Press Ctrl+V instead.'); return; }
+  try{
+    const items=await navigator.clipboard.read();
+    for(const item of items){
+      const type=item.types.find(t=>t.startsWith('image/'));
+      if(type){
+        const blob=await item.getType(type);
+        dropzone.classList.add('flash'); setTimeout(()=>dropzone.classList.remove('flash'),500);
+        handleFile(new File([blob],'pasted-image',{type}));
+        return;
+      }
+    }
+    alert('No image on your clipboard yet.\n\nRight-click an image → “Copy image” first, then tap Paste.');
+  }catch(_){
+    alert('Couldn’t read the clipboard. Press Ctrl+V instead, or allow clipboard access when your browser asks.');
+  }
+}
+$('#pasteBtn').addEventListener('click',pasteFromClipboard);
 async function checkLink(){
   const url=$('#linkInput').value.trim(); if(!url){$('#linkInput').focus();return;}
   const base=apiBase();
