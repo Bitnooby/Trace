@@ -51,11 +51,15 @@ async function reverseSearch(publicImageUrl) {
     const matches = (j.visual_matches || []).slice(0, 8).map(m => ({
       title: m.title, source: m.source, link: m.link, date: m.date || null
     }));
+    const domains = [...new Set((j.visual_matches || []).map(m => {
+      try { return new URL(m.link).hostname.replace(/^www\./, ''); } catch { return (m.source || '').toLowerCase(); }
+    }).filter(Boolean))].slice(0, 6);
     const dated = matches.filter(m => m.date).sort((a, b) => new Date(a.date) - new Date(b.date));
     return {
       connected: true,
       count: (j.visual_matches || []).length,
       earliest: dated[0] || null,
+      domains,
       matches
     };
   } catch (e) {
@@ -93,6 +97,8 @@ app.post('/api/publish', upload.single('image'), async (req, res) => {
     const id  = shortId(sha);
     let findings = [];
     try { findings = JSON.parse(req.body.findings || '[]'); } catch { /* ignore */ }
+    let read = null;
+    try { read = JSON.parse(req.body.read || 'null'); } catch { /* ignore */ }
 
     if (req.file) imgStore.set(id, { buf: req.file.buffer, mime: req.file.mimetype });
 
@@ -103,7 +109,7 @@ app.post('/api/publish', upload.single('image'), async (req, res) => {
     const captions = (reverse.matches || []).map(m => m.title);
     const fact = await factCheck(captions);
 
-    const report = { id, sha256: sha, createdAt: Date.now(), findings, reverse, fact, hasImage: !!req.file };
+    const report = { id, sha256: sha, createdAt: Date.now(), findings, read, reverse, fact, hasImage: !!req.file };
     store.set(id, report);
     res.json({ id, reverse, fact });
   } catch (e) {
@@ -205,7 +211,8 @@ app.get('/check/:id', (req, res) => {
   let web = '';
   if (r.reverse?.connected) {
     const e = r.reverse.earliest;
-    web += `<div class="row"><div><div class="n">Reverse image search</div><div class="rd">Found across ${r.reverse.count||0} place(s).${e?` Earliest known copy: ${esc(e.source||'')} (${esc(e.date||'')}).`:''}</div></div><span class="st st-signal">Checked</span></div>`;
+    const doms = (r.reverse.domains || []).slice(0, 4).join(', ');
+    web += `<div class="row"><div><div class="n">Reverse image search</div><div class="rd">Found across ${r.reverse.count||0}+ place(s).${doms?` Appears on: ${esc(doms)}${(r.reverse.count||0)>4?' …and more':''}.`:''}${e?` Earliest dated copy: ${esc(e.source||'')} (${esc(e.date||'')}).`:''}</div></div><span class="st st-signal">Checked</span></div>`;
   }
   if (r.fact?.connected) {
     const claims = r.fact.claims || [];
@@ -217,17 +224,26 @@ app.get('/check/:id', (req, res) => {
     }
   }
 
-  const desc = 'Provenance, camera origin & edits traced — evidence, not a verdict.';
+  // instant-read banner — verdict on the evidence, escalated to a debunk if fact-checkers flagged it
+  let rd = r.read || { level: 'scrutinize', badge: 'Verify the context', line: 'No origin data in the file. The file alone can’t tell you whether the caption is true.' };
+  if (r.fact?.connected && (r.fact.claims || []).length) {
+    rd = { level: 'debunk', badge: 'Fact-check debunk on record', line: 'Fact-checkers have published a debunk tied to this image. Read it before sharing.' };
+  }
+  const rbCls = { ai: 'rb-red', debunk: 'rb-red', verified: 'rb-green', photo: 'rb-blue', scrutinize: 'rb-amber' }[rd.level] || 'rb-amber';
+  const banner = `<div class="rb ${rbCls}"><div class="rb-b">${esc(rd.badge)}</div><div class="rb-l">${esc(rd.line)}</div></div>`;
+
+  const desc = (rd.badge || 'Evidence report') + ' — evidence, not a verdict.';
   const og = `
-    <meta property="og:title" content="Trace — Evidence report" />
-    <meta property="og:description" content="${desc}" />
+    <meta property="og:title" content="Trace — ${esc(rd.badge||'Evidence report')}" />
+    <meta property="og:description" content="${esc(desc)}" />
     <meta property="og:type" content="website" />
     ${r.hasImage ? `<meta property="og:image" content="${base}/img/${r.id}" />` : ''}
     <meta name="twitter:card" content="summary_large_image" />`;
 
   res.send(page('Trace — Evidence report', `
     ${r.hasImage ? `<img class="hero" src="${base}/img/${r.id}" alt="" />` : ''}
-    <div class="note"><b>Evidence, not a verdict.</b> Weigh the signals below; the judgment is yours.</div>
+    ${banner}
+    <div class="note"><b>Evidence, not a verdict.</b> This reads the file, not the truth of the caption — weigh it yourself.</div>
     <div class="card">${rows}${web}</div>
     <a class="cta" href="${base}/">Check your own image →</a>
   `, base, og));
@@ -243,6 +259,14 @@ function page(title, body, base, og) {
     .brand{display:flex;align-items:center;gap:9px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;font-size:15px;color:var(--signal)}
     .g{width:22px;height:22px;border-radius:6px;background:linear-gradient(150deg,#0B6E6E,#13A8A8)}
     .hero{width:100%;border-radius:14px;margin:18px 0;border:1px solid var(--line)}
+    .rb{border-radius:13px;padding:16px 18px;margin:14px 0 14px}
+    .rb-b{font-weight:700;font-size:18px;display:flex;align-items:center;gap:9px}
+    .rb-b::before{content:"";width:11px;height:11px;border-radius:50%;background:currentColor;flex:0 0 auto}
+    .rb-l{font-size:13.5px;margin-top:7px;line-height:1.5;color:var(--g)}
+    .rb-red{background:#FAE9E6}.rb-red .rb-b{color:#B83A2B}
+    .rb-green{background:#E6F3EC}.rb-green .rb-b{color:var(--ok)}
+    .rb-blue{background:#EAF1FB}.rb-blue .rb-b{color:#2D5BA8}
+    .rb-amber{background:#FAF0DD}.rb-amber .rb-b{color:var(--warn)}
     .note{background:#E6F4F4;border:1px solid #C5E5E5;border-radius:11px;padding:13px 15px;font-size:14px;color:#274545;margin:6px 0 16px}
     .card{background:#fff;border:1px solid var(--line);border-radius:14px;overflow:hidden}
     .row{display:flex;justify-content:space-between;gap:14px;padding:14px 16px;border-top:1px solid var(--line);align-items:start}

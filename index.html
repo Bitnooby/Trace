@@ -80,6 +80,16 @@
   .factchip{font-family:var(--mono);font-size:11.5px;color:var(--graphite);background:var(--paper);border:1px solid var(--line);border-radius:7px;padding:4px 9px}
   .factchip.hash{color:var(--signal);border-color:var(--signal-line);background:var(--signal-wash)}
 
+  .read-banner{padding:18px 22px;border-bottom:1px solid var(--line)}
+  .rb-badge{font-family:var(--display);font-weight:700;font-size:18px;letter-spacing:-.01em;display:flex;align-items:center;gap:9px;line-height:1.2}
+  .rb-badge .dotb{width:11px;height:11px;border-radius:50%;flex:0 0 auto}
+  .rb-line{color:var(--graphite);font-size:14px;margin-top:8px;line-height:1.5}
+  .rb-action{font-size:13.5px;margin-top:9px;color:var(--ink)}
+  .rb-action b{font-family:var(--display)}
+  .r-red{background:var(--flag-wash)} .r-red .rb-badge{color:var(--flag)} .r-red .dotb{background:var(--flag)}
+  .r-green{background:var(--ok-wash)} .r-green .rb-badge{color:var(--ok)} .r-green .dotb{background:var(--ok)}
+  .r-blue{background:#EAF1FB} .r-blue .rb-badge{color:#2D5BA8} .r-blue .dotb{background:#2D5BA8}
+  .r-amber{background:var(--warn-wash)} .r-amber .rb-badge{color:var(--warn)} .r-amber .dotb{background:var(--warn)}
   .ledger{padding:18px 22px;border-bottom:1px solid var(--line);background:linear-gradient(180deg,#FCFDFE,#fff)}
   .ledger-top{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:14px}
   .ledger-title{font-family:var(--display);font-weight:600;font-size:13px;letter-spacing:.1em;text-transform:uppercase;color:var(--graphite)}
@@ -188,6 +198,8 @@
         <div class="chips" id="factChips"></div>
       </div>
     </div>
+
+    <div class="read-banner" id="readBanner"></div>
 
     <div class="ledger">
       <div class="ledger-top">
@@ -302,6 +314,19 @@ function dims(file){return new Promise(res=>{const img=new Image(),u=URL.createO
 const fmtSize=b=>b<1024?b+' B':b<1048576?(b/1024).toFixed(0)+' KB':(b/1048576).toFixed(2)+' MB';
 const esc=t=>(t==null?'':String(t)).replace(/[<>&]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
 
+/* the one-line "instant read" — a verdict on the EVIDENCE, never on real/fake */
+function computeRead(c){
+  if(c.ai) return {level:'ai',badge:'AI-origin marker found',line:'This file carries a signature from an AI image generator — strong evidence it was AI-made.',action:'Treat as AI-generated unless a trusted source proves otherwise.'};
+  if(c.c2pa) return {level:'verified',badge:'Origin record present',line:'Carries Content Credentials — a verifiable, tamper-evident record of how this image was made.',action:'Open the credentials to read its history.'};
+  if(c.cam||c.when||c.gps) return {level:'photo',badge:'Original-photo signals',line:'Carries camera/capture data consistent with a real photo — though such data can be edited.',action:'Cross-check the time and place against what it claims to show.'};
+  return {level:'scrutinize',badge:'Verify the context',line:'No origin data in the file — typical of screenshots and social re-uploads. The file alone can’t tell you whether the caption is true.',action:'Find the original source and check the caption actually matches it.'};
+}
+const READ_CLASS={ai:'r-red',debunk:'r-red',verified:'r-green',photo:'r-blue',scrutinize:'r-amber'};
+function renderRead(rd){
+  const el=$('#readBanner'); el.className='read-banner '+(READ_CLASS[rd.level]||'r-amber');
+  el.innerHTML=`<div class="rb-badge"><span class="dotb"></span>${esc(rd.badge)}</div><div class="rb-line">${esc(rd.line)}</div><div class="rb-action"><b>Do this:</b> ${esc(rd.action)}</div>`;
+}
+
 let lastFile=null, lastHash=null;
 
 async function analyze(file){
@@ -325,6 +350,9 @@ async function analyze(file){
   const when=exif.dateOriginal||exif.datetime||exif.dateDigitized;
   const sw=exif.software||scan.editor;
   const serverOn=apiBase()!==null;
+
+  const readObj=computeRead({ai:scan.ai,c2pa:scan.c2pa,cam,when,gps:exif.__gps});
+  renderRead(readObj);
 
   const camScore=(cam?1:0)+(when?1:0)+(exif.__gps?1:0);
   const meters=[
@@ -367,7 +395,7 @@ async function analyze(file){
   F.push({id:'r-fact',ic:'srv',name:'Known-fake database',state:['srv', serverOn?'Checking…':'Local only'],read:'Check whether fact-checkers already debunked this exact image (matched by fingerprint + found captions).',data: serverOn?'Querying the connected server…':'Open this on the deployed server to run web checks.'});
 
   renderRows(F,hash,serverOn);
-  if(serverOn) publishToServer(file,hash,F).catch(()=>{});
+  if(serverOn) publishToServer(file,hash,F,readObj).catch(()=>{});
 }
 
 function renderRows(F,hash,serverOn){
@@ -401,9 +429,9 @@ function setWebMeter(on,stat){
 }
 
 /* talks to the Trace server's own address; upgrades rows + share link on success */
-async function publishToServer(file,hash,localFindings){
+async function publishToServer(file,hash,localFindings,readObj){
   const base=apiBase(); if(!base) return;
-  const fd=new FormData(); fd.append('image',file); fd.append('sha256',hash||''); fd.append('findings',JSON.stringify(localFindings));
+  const fd=new FormData(); fd.append('image',file); fd.append('sha256',hash||''); fd.append('findings',JSON.stringify(localFindings)); fd.append('read',JSON.stringify(readObj||null));
   let j;
   try{ const r=await fetch(base+'/api/publish',{method:'POST',body:fd}); j=await r.json(); }
   catch(e){ return; } // e.g. preview sandbox with no server → leave honest placeholders
@@ -415,8 +443,10 @@ async function publishToServer(file,hash,localFindings){
 
   const rev=j.reverse||{};
   if(rev.connected){
+    const doms=(rev.domains||[]).slice(0,4).join(', ');
     const e=rev.earliest;
-    setRow('r-reverse',{ic:'signal',state:['signal','Checked'],read:'Searched the web for other copies of this image.',data:`Found across ${rev.count||0} place(s).`+(e?` Earliest copy: ${e.source||''} ${e.date||''}`:' No dated earliest copy identified.')});
+    setRow('r-reverse',{ic:'signal',state:['signal','Checked'],read:'Searched the web for other copies of this image.',
+      data:`Found across ${rev.count||0}+ place(s).`+(doms?`\nAppears on: ${doms}${(rev.count||0)>4?' …and more':''}.`:'')+(e?`\nEarliest dated copy: ${e.source||''} ${e.date||''}`:'')});
     setWebMeter(Math.min(3,(rev.count?2:1)),'Checked');
   } else {
     setRow('r-reverse',{ic:'srv',state:['srv','Add key'],read:'Server is live, but the reverse-search key isn\'t set yet (Phase 2).',data: rev.note||'Set SERPAPI_KEY to enable.'});
@@ -426,6 +456,8 @@ async function publishToServer(file,hash,localFindings){
   if(fc.connected && (fc.claims||[]).length){
     const txt=fc.claims.map(c=>`${c.publisher||''}: ${c.rating||''}`).join(' · ');
     setRow('r-fact',{ic:'caution',state:['caution','Matches'],read:'Fact-checkers have addressed claims tied to this image.',data:txt});
+    // a published debunk is the strongest signal we have → escalate the top read
+    renderRead({level:'debunk',badge:'Fact-check debunk on record',line:'Fact-checkers have published a debunk tied to this image. '+txt,action:'Read the fact-check before sharing — this has already been flagged.'});
   } else if(fc.connected){
     setRow('r-fact',{ic:'present',state:['present','Clear'],read:'No matching debunk found by the fact-check source.',data:'No fact-check matches.'});
   } else {
