@@ -152,17 +152,17 @@
     <div class="drop">
       <div class="dropzone" id="dropzone" tabindex="0" role="button" aria-label="Upload an image to check">
         <svg class="dz-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/><path d="M11 8v6M8 11h6"/></svg>
-        <div class="dz-title">Drop an image here, or tap to choose</div>
-        <div class="dz-sub">JPEG · PNG · WebP — read in your browser, never uploaded</div>
+        <div class="dz-title">Drop or paste an image, or tap to choose</div>
+        <div class="dz-sub">JPEG · PNG · WebP — or press Ctrl+V to paste an image</div>
         <input type="file" id="fileInput" accept="image/*" hidden />
       </div>
-      <div class="or">or paste a link to where you saw it</div>
+      <div class="or">or paste a link (direct image or article link)</div>
       <div class="linkrow">
-        <input type="text" id="linkInput" placeholder="https://x.com/.../status/..." />
+        <input type="text" id="linkInput" placeholder="https://…/photo.jpg  or a news article link" />
         <button class="btn" id="linkBtn">Check link</button>
       </div>
       <div class="hint"><span class="dot"></span> No sign-up · nothing leaves your device for the file checks</div>
-      <div class="tip">Try it: drop a <b>photo straight off your phone</b>, then a <b>screenshot or saved meme</b> — watch the reports come out different.</div>
+      <div class="tip">On X or anywhere: right-click the image → <b>Copy image</b>, come back and press <b>Ctrl+V</b>. Works even when a link won't.</div>
     </div>
   </section>
 
@@ -428,7 +428,41 @@ fileInput.addEventListener('change',e=>handleFile(e.target.files[0]));
 ['dragenter','dragover'].forEach(ev=>dropzone.addEventListener(ev,e=>{e.preventDefault();dropzone.classList.add('drag');}));
 ['dragleave','drop'].forEach(ev=>dropzone.addEventListener(ev,e=>{e.preventDefault();dropzone.classList.remove('drag');}));
 dropzone.addEventListener('drop',e=>handleFile(e.dataTransfer.files[0]));
-$('#linkBtn').addEventListener('click',()=>{const u=$('#linkInput').value.trim();if(!u){$('#linkInput').focus();return;}alert('Pasting a link needs the server to fetch the image from another site. Once deployed, this will work; for now, save the image and drop it above to run the real file checks.');});
+
+/* ----- paste an image from clipboard (right-click image → Copy image → Ctrl+V) ----- */
+window.addEventListener('paste',e=>{
+  const items=(e.clipboardData&&e.clipboardData.items)||[];
+  for(const it of items){
+    if(it.type&&it.type.startsWith('image/')){
+      const blob=it.getAsFile();
+      if(blob){ e.preventDefault(); handleFile(new File([blob],'pasted-image',{type:blob.type||'image/png'})); return; }
+    }
+  }
+});
+
+/* ----- paste a link: the server fetches the image (direct image or page preview) ----- */
+async function checkLink(){
+  const url=$('#linkInput').value.trim(); if(!url){$('#linkInput').focus();return;}
+  const base=apiBase();
+  if(!base){ alert('Pasting a link needs the live server. Open the deployed site — or right-click the image, choose “Copy image”, and press Ctrl+V here.'); return; }
+  const btn=$('#linkBtn'); const label=btn.textContent; btn.textContent='Fetching…'; btn.disabled=true;
+  try{
+    const r=await fetch(base+'/api/proxy-image?url='+encodeURIComponent(url));
+    if(!r.ok){
+      let msg='Couldn’t pull an image from that link automatically.';
+      try{ const j=await r.json(); if(j&&j.error) msg=j.error; }catch(_){}
+      alert(msg+'\n\nReliable trick: right-click the image → “Copy image”, come back here and press Ctrl+V. That works even when a link won’t.');
+      return;
+    }
+    const blob=await r.blob();
+    if(!blob.type.startsWith('image/')){ alert('That link didn’t return an image.\n\nTry right-click → “Copy image”, then press Ctrl+V here.'); return; }
+    handleFile(new File([blob],'from-link',{type:blob.type}));
+  }catch(_){
+    alert('Could not reach that link. Check the address — or right-click the image, “Copy image”, and press Ctrl+V here.');
+  }finally{ btn.textContent=label; btn.disabled=false; }
+}
+$('#linkBtn').addEventListener('click',checkLink);
+$('#linkInput').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();checkLink();}});
 function reset(){dossier.classList.remove('show');$('#submitPanel').style.display='';$('#linkInput').value='';fileInput.value='';window.scrollTo({top:0,behavior:'smooth'});}
 $('#againBtn').addEventListener('click',reset); $('#resetBtn').addEventListener('click',reset);
 $('#copyBtn').addEventListener('click',()=>{const t=$('#shareUrl').textContent;navigator.clipboard?.writeText(t).then(()=>{const b=$('#copyBtn'),o=b.textContent;b.textContent='Copied';setTimeout(()=>b.textContent=o,1400);});});

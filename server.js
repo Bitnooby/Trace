@@ -123,6 +123,72 @@ app.get('/img/:id', (req, res) => {
   res.set('Content-Type', i.mime || 'image/jpeg').send(i.buf);
 });
 
+/* ---------- fetch an image from a pasted link ----------
+   Handles a direct image URL, or an article/page URL (pulls its og:image).
+   Social posts (X, Instagram, TikTok) usually block this — the UI tells users
+   to right-click → Copy image → Ctrl+V instead.
+   Guards: https/http only, no private/loopback hosts (SSRF), 8s timeout, 15MB cap. */
+const MAX_BYTES = 15 * 1024 * 1024;
+const FETCH_UA  = 'Mozilla/5.0 (compatible; TraceBot/0.1; +https://github.com/)';
+function hostBlocked(h) {
+  h = (h || '').toLowerCase();
+  if (h === 'localhost' || h.endsWith('.local') || h.endsWith('.internal')) return true;
+  if (h === '::1' || h.startsWith('fc') || h.startsWith('fd')) return true;
+  if (/^(127\.|10\.|192\.168\.|169\.254\.|0\.)/.test(h)) return true;
+  if (/^172\.(1[6-9]|2\d|3[01])\./.test(h)) return true;
+  return false;
+}
+async function grab(url, accept) {
+  return fetch(url, { headers: { 'User-Agent': FETCH_UA, 'Accept': accept }, redirect: 'follow', signal: AbortSignal.timeout(8000) });
+}
+async function toCappedBuffer(resp) {
+  const buf = Buffer.from(await resp.arrayBuffer());
+  if (buf.length > MAX_BYTES) throw new Error('too-large');
+  return buf;
+}
+
+app.get('/api/proxy-image', async (req, res) => {
+  const raw = (req.query.url || '').toString().trim();
+  let u;
+  try { u = new URL(raw); } catch { return res.status(400).json({ error: 'That doesn’t look like a valid link.' }); }
+  if (!/^https?:$/.test(u.protocol)) return res.status(400).json({ error: 'Only http and https links are supported.' });
+  if (hostBlocked(u.hostname)) return res.status(400).json({ error: 'That address isn’t allowed.' });
+
+  try {
+    const resp = await grab(u.href, 'image/*,text/html;q=0.9,*/*;q=0.8');
+    const ct = (resp.headers.get('content-type') || '').toLowerCase();
+
+    // Direct image
+    if (ct.startsWith('image/')) {
+      const buf = await toCappedBuffer(resp);
+      return res.set('Content-Type', ct).send(buf);
+    }
+
+    // HTML page → find a preview image (og:image / twitter:image)
+    if (ct.includes('text/html') || ct === '') {
+      const html = await resp.text();
+      const find = re => { const m = html.match(re); return m ? m[1] : null; };
+      let img = find(/<meta[^>]+property=["']og:image(?::url)?["'][^>]+content=["']([^"']+)["']/i)
+             || find(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image(?::url)?["']/i)
+             || find(/<meta[^>]+name=["']twitter:image["'][^>]+content=["']([^"']+)["']/i)
+             || find(/<meta[^>]+content=["']([^"']+)["'][^>]+name=["']twitter:image["']/i);
+      if (!img) return res.status(422).json({ error: 'No image found on that page. Sites like X, Instagram and TikTok block automatic fetching — use Copy image → Ctrl+V instead.' });
+      img = new URL(img, u.href).href;
+      const ir = await grab(img, 'image/*');
+      const ict = (ir.headers.get('content-type') || '').toLowerCase();
+      if (!ict.startsWith('image/')) return res.status(422).json({ error: 'Found a preview link but it wasn’t an image.' });
+      const buf = await toCappedBuffer(ir);
+      return res.set('Content-Type', ict).send(buf);
+    }
+
+    return res.status(422).json({ error: 'That link isn’t an image or a readable page.' });
+  } catch (e) {
+    if (e.message === 'too-large') return res.status(413).json({ error: 'That image is too large to fetch.' });
+    if (e.name === 'TimeoutError') return res.status(504).json({ error: 'That link took too long to respond.' });
+    return res.status(502).json({ error: 'Couldn’t reach that link.' });
+  }
+});
+
 /* ---------- the shareable result page (unfurls on social) ---------- */
 app.get('/check/:id', (req, res) => {
   const r = store.get(req.params.id);
