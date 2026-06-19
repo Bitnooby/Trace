@@ -25,6 +25,7 @@ const multer  = require('multer');
 const crypto  = require('crypto');
 
 const app  = express();
+app.set('trust proxy', true);                  // Render sits behind a proxy → makes req.protocol return https
 const PORT  = process.env.PORT || 8080;
 const SERPAPI_KEY   = process.env.SERPAPI_KEY   || '';   // serpapi.com — Google Lens engine
 const FACTCHECK_KEY = process.env.FACTCHECK_KEY || '';   // Google Fact Check Tools API
@@ -129,7 +130,9 @@ app.get('/check/:id', (req, res) => {
   if (!r) return res.status(404).send(page('Report not found', '<p style="color:#586273">This report has expired or never existed. In the prototype, reports live in memory and reset on restart.</p>', base, null));
 
   const esc = t => (t == null ? '' : String(t)).replace(/[<>&"]/g, c => ({ '<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;' }[c]));
-  const rows = (r.findings || []).filter(f => !f.section).map(f =>
+  // render stored file-checks, but skip the two cross-check placeholders — we paint authoritative versions below
+  const skip = new Set(['Reverse image search', 'Known-fake database']);
+  const rows = (r.findings || []).filter(f => !f.section && !skip.has(f.name)).map(f =>
     `<div class="row"><div><div class="n">${esc(f.name)}</div><div class="rd">${esc(f.read)}</div></div><span class="st st-${f.ic}">${esc((f.state||[])[1]||'')}</span></div>`
   ).join('');
 
@@ -138,9 +141,14 @@ app.get('/check/:id', (req, res) => {
     const e = r.reverse.earliest;
     web += `<div class="row"><div><div class="n">Reverse image search</div><div class="rd">Found across ${r.reverse.count||0} place(s).${e?` Earliest known copy: ${esc(e.source||'')} (${esc(e.date||'')}).`:''}</div></div><span class="st st-signal">Checked</span></div>`;
   }
-  if (r.fact?.connected && (r.fact.claims||[]).length) {
-    const c = r.fact.claims.map(x => `${esc(x.publisher||'')}: ${esc(x.rating||'')}`).join(' · ');
-    web += `<div class="row"><div><div class="n">Known-fake database</div><div class="rd">${esc(c)}</div></div><span class="st st-caution">Matches</span></div>`;
+  if (r.fact?.connected) {
+    const claims = r.fact.claims || [];
+    if (claims.length) {
+      const c = claims.map(x => `${esc(x.publisher||'')}: ${esc(x.rating||'')}`).join(' · ');
+      web += `<div class="row"><div><div class="n">Known-fake database</div><div class="rd">Fact-checkers have addressed claims tied to this image. ${c}</div></div><span class="st st-caution">Matches</span></div>`;
+    } else {
+      web += `<div class="row"><div><div class="n">Known-fake database</div><div class="rd">No published fact-check found for this image. (Means "no debunk on record," not "verified true.")</div></div><span class="st st-present">Clear</span></div>`;
+    }
   }
 
   const desc = 'Provenance, camera origin & edits traced — evidence, not a verdict.';
