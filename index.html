@@ -24,45 +24,45 @@
   body{background:var(--paper);color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.5;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
   .wrap{max-width:800px;margin:0 auto;padding:0 22px} svg{display:block}
 
-  header.mast{padding:40px 0 22px}
-  .mark{display:flex;align-items:center;gap:11px}
-  .glyph{width:32px;height:32px;flex:0 0 auto;border-radius:8px;background:linear-gradient(150deg,var(--signal),var(--signal-bright));box-shadow:0 3px 10px rgba(11,110,110,.3);display:flex;align-items:center;justify-content:center}
-  .glyph svg{width:22px;height:22px}
-  .wordmark{font-family:var(--display);font-weight:700;font-size:21px;letter-spacing:.17em;text-transform:uppercase}
-  .badge{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--faint);border:1px solid var(--line);border-radius:20px;padding:4px 10px}
-  .tagline{margin:22px 0 0;font-family:var(--display);font-weight:600;font-size:clamp(28px,5.4vw,42px);line-height:1.08;letter-spacing:-.02em}
-  .tagline em{font-style:normal;color:var(--signal)}
-  .sub{margin:15px 0 0;color:var(--graphite);font-size:16.5px;max-width:62ch}
+  header.mast{padding:34px 0 0;display:flex;justify-content:center}
+  .brand{display:inline-flex;align-items:center;gap:10px;text-decoration:none;color:var(--ink)}
+  .glyph{width:30px;height:30px;flex:0 0 auto;border-radius:8px;background:linear-gradient(150deg,var(--signal),var(--signal-bright));box-shadow:0 3px 10px rgba(11,110,110,.3);display:flex;align-items:center;justify-content:center}
+  .glyph svg{width:20px;height:20px}
+  .wordmark{font-family:var(--display);font-weight:700;font-size:20px;letter-spacing:.17em;text-transform:uppercase}
+  .badge{font-family:var(--mono);font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:var(--signal);background:var(--signal-wash);border:1px solid var(--signal-line);border-radius:20px;padding:2px 8px}
+  .hero{max-width:540px;margin:0 auto;text-align:center;padding-bottom:64px;animation:heroIn .5s ease both}
+  @keyframes heroIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+  .big{font-family:var(--display);font-weight:700;font-size:clamp(46px,11vw,74px);line-height:1;letter-spacing:-.03em;margin:46px 0 0}
+  .big em{font-style:normal;background:linear-gradient(120deg,var(--signal),var(--signal-bright));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+  .say{margin:16px auto 0;color:var(--graphite);font-size:17px;max-width:33ch;line-height:1.45}
 
   .panel{background:var(--card);border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow);margin-top:26px;overflow:hidden}
-  .drop{padding:24px;display:flex;flex-direction:column;gap:15px}
-  .dropzone{border:1.5px dashed var(--line-strong);border-radius:13px;padding:34px 22px;text-align:center;cursor:pointer;transition:border-color .15s,background .15s;background:#FBFCFE}
+  .dropzone{margin-top:30px;border:2px dashed var(--line-strong);border-radius:20px;padding:44px 24px;text-align:center;cursor:pointer;background:var(--card);transition:border-color .15s,background .15s,transform .15s}
   .dropzone:hover{border-color:var(--signal-bright);background:var(--signal-wash)}
-  .dropzone.drag{border-color:var(--signal);background:var(--signal-wash);transform:scale(1.005)}
-  .dz-ic{width:40px;height:40px;margin:0 auto 12px;color:var(--signal)}
-  .dz-title{font-family:var(--display);font-weight:600;font-size:18px}
-  .dz-sub{color:var(--faint);font-size:13.5px;margin-top:5px}
-  .dz-keys{display:flex;align-items:center;justify-content:center;gap:6px;margin-top:12px;flex-wrap:wrap}
-  .kbd{font-family:var(--mono);font-size:12px;font-weight:600;color:var(--ink);background:#fff;border:1px solid var(--line-strong);border-bottom-width:2px;border-radius:6px;padding:3px 8px;line-height:1}
-  .kplus{color:var(--faint);font-size:12px;margin:0 1px}
-  .dz-or2{color:var(--faint);font-size:13px;margin-left:8px}
+  .dropzone.drag{border-color:var(--signal);background:var(--signal-wash);transform:scale(1.01)}
+  .dropzone:focus-visible{outline:2px solid var(--signal-bright);outline-offset:3px}
+  .dz-ic{width:42px;height:42px;margin:0 auto 14px;color:var(--signal-bright)}
+  .dz-title{font-family:var(--display);font-weight:700;font-size:21px}
+  .dz-sub{color:var(--faint);font-size:14px;margin-top:5px}
   .dropzone.flash{border-color:var(--signal);background:var(--signal-wash);animation:flash .5s ease}
-  @keyframes flash{0%{transform:scale(1)}40%{transform:scale(1.015)}100%{transform:scale(1)}}
-  .or{display:flex;align-items:center;gap:12px;color:var(--faint);font-size:13px}
-  .or::before,.or::after{content:"";height:1px;background:var(--line);flex:1}
-  .linkrow{display:flex;gap:9px}
-  .linkrow input{flex:1;border:1px solid var(--line-strong);border-radius:11px;padding:13px;font-family:var(--mono);font-size:13.5px;color:var(--ink);background:#fff;min-width:0}
+  @keyframes flash{0%{transform:scale(1)}40%{transform:scale(1.02)}100%{transform:scale(1)}}
+  .alt{display:flex;align-items:center;justify-content:center;gap:10px;margin-top:14px;flex-wrap:wrap}
+  .alt-or{color:var(--faint);font-size:13px}
+  .linkrow{display:flex;gap:7px;align-items:center}
+  .linkrow input{width:148px;border:1px solid var(--line-strong);border-radius:12px;padding:11px 13px;font-family:var(--mono);font-size:13px;color:var(--ink);background:var(--card);min-width:0}
   .linkrow input:focus{outline:2px solid var(--signal-bright);outline-offset:1px;border-color:transparent}
-  .btn{font-family:var(--display);font-weight:600;font-size:14.5px;border:none;border-radius:11px;padding:13px 19px;cursor:pointer;background:var(--ink);color:#fff;white-space:nowrap;transition:transform .08s,opacity .15s}
+  .btn{font-family:var(--display);font-weight:600;font-size:14px;border:none;border-radius:12px;padding:11px 16px;cursor:pointer;background:var(--ink);color:#fff;white-space:nowrap;transition:transform .08s,opacity .15s}
   .btn:hover{opacity:.93}.btn:active{transform:translateY(1px)}
   .btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--line-strong)}
-  .paste-btn{display:flex;align-items:center;justify-content:center;gap:9px;width:100%;background:var(--signal)}
-  .paste-btn svg{width:17px;height:17px}
-  .kbd-in{font-family:var(--mono);font-size:11px;font-weight:600;background:rgba(255,255,255,.18);border-radius:5px;padding:2px 7px;margin-left:2px}
-  .hint{display:flex;align-items:center;gap:7px;color:var(--faint);font-size:13px;justify-content:center}
-  .dot{width:6px;height:6px;border-radius:50%;background:var(--ok);box-shadow:0 0 0 3px var(--ok-wash)}
-  .tip{margin-top:2px;font-size:13px;color:var(--faint);text-align:center}
-  .tip b{color:var(--graphite);font-weight:500}
+  .paste-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;background:var(--ink);color:#fff;font-family:var(--display);font-weight:600;font-size:14px;border:none;border-radius:12px;padding:11px 16px;cursor:pointer;transition:transform .08s,opacity .15s}
+  .paste-btn:hover{opacity:.93}.paste-btn:active{transform:translateY(1px)}
+  .paste-btn svg{width:16px;height:16px}
+  .kbd-in{font-family:var(--mono);font-size:10.5px;font-weight:600;background:rgba(255,255,255,.18);border-radius:5px;padding:2px 6px}
+  .reassure{margin:28px 0 0;color:var(--faint);font-size:13px}
+  .tip{margin:8px 0 0;color:var(--faint);font-size:12.5px}
+  .tip b{color:var(--graphite);font-weight:600}
+  .dot{width:6px;height:6px;border-radius:50%;background:var(--ok);box-shadow:0 0 0 3px var(--ok-wash);display:inline-block}
+  @media(prefers-reduced-motion:reduce){.hero{animation:none}.dropzone,.btn,.paste-btn{transition:none}}
 
   #dossier{margin-top:24px;display:none}
   #dossier.show{display:block;animation:rise .4s ease both}
@@ -159,39 +159,42 @@
 <div class="wrap">
 
   <header class="mast">
-    <div class="mark">
-      <div class="glyph" aria-hidden="true"><svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <a class="brand" href="/">
+      <span class="glyph" aria-hidden="true"><svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
         <g stroke="#fff" stroke-width="7" stroke-linecap="round"><line x1="32" y1="34" x2="50" y2="52"/><line x1="50" y1="52" x2="70" y2="36"/><line x1="50" y1="52" x2="52" y2="78"/></g>
         <circle cx="32" cy="34" r="7.5" fill="#fff"/><circle cx="70" cy="36" r="7.5" fill="#fff"/><circle cx="52" cy="78" r="7.5" fill="#fff"/>
         <circle cx="50" cy="52" r="13" fill="none" stroke="#fff" stroke-width="7"/><circle cx="50" cy="52" r="4.5" fill="#fff"/>
-      </svg></div>
+      </svg></span>
       <span class="wordmark">Trace</span>
-      <span class="badge" id="modeBadge">prototype</span>
-    </div>
-    <h1 class="tagline">Is it real? <em>Show the evidence.</em></h1>
-    <p class="sub">Paste, drop, or upload a suspicious image. Trace reads what the file itself reveals — proof of origin, the camera that shot it, whether it's been edited — and hands you the evidence with the reasoning. You make the call.</p>
+      <span class="badge" id="modeBadge">beta</span>
+    </a>
   </header>
 
-  <section class="panel" id="submitPanel">
-    <div class="drop">
-      <div class="dropzone" id="dropzone" tabindex="0" role="button" aria-label="Drop or browse for an image">
-        <svg class="dz-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2.5"/><circle cx="8.5" cy="8.5" r="1.6"/><path d="m21 15-4.5-4.5L5 21"/></svg>
-        <div class="dz-title">Drop an image, or click to browse</div>
-        <div class="dz-sub">JPEG · PNG · WebP</div>
-        <input type="file" id="fileInput" accept="image/*" hidden />
-      </div>
-      <button class="btn paste-btn" id="pasteBtn" type="button">
+  <section class="hero" id="submitPanel">
+    <h1 class="big">Is it <em>real</em>?</h1>
+    <p class="say">Drop an image. Trace shows the evidence — you make the call.</p>
+
+    <div class="dropzone" id="dropzone" tabindex="0" role="button" aria-label="Drop or browse for an image">
+      <svg class="dz-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2.5"/><circle cx="8.5" cy="8.5" r="1.6"/><path d="m21 15-4.5-4.5L5 21"/></svg>
+      <div class="dz-title">Drop an image</div>
+      <div class="dz-sub">or click to browse · JPEG, PNG, WebP</div>
+      <input type="file" id="fileInput" accept="image/*" hidden />
+    </div>
+
+    <div class="alt">
+      <button class="paste-btn" id="pasteBtn" type="button">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg>
         Paste image <span class="kbd-in">Ctrl V</span>
       </button>
-      <div class="or">or paste a link (image URL or article)</div>
+      <span class="alt-or">or</span>
       <div class="linkrow">
-        <input type="text" id="linkInput" placeholder="https://…/photo.jpg  ·  or an article link" />
-        <button class="btn ghost" id="linkBtn">Check link</button>
+        <input type="text" id="linkInput" placeholder="paste a link" />
+        <button class="btn ghost" id="linkBtn">Check</button>
       </div>
-      <div class="hint"><span class="dot"></span> No sign-up · nothing leaves your device for the file checks</div>
-      <div class="tip"><b>From X · Instagram · Facebook · anywhere:</b> right-click the image → <b>Copy image</b>, then tap <b>Paste</b> (or Ctrl+V). One tool, every platform.</div>
     </div>
+
+    <p class="reassure">No sign-up · your image never leaves your device for the file checks</p>
+    <p class="tip">From X, Instagram, anywhere: right-click the image → <b>Copy</b> → <b>Paste</b></p>
   </section>
 
   <section class="panel" id="dossier" aria-live="polite">
