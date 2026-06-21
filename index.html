@@ -407,37 +407,26 @@ async function analyze(file){
     return `<div ${m.id?`id="${m.id}"`:''}><div class="meter-lab">${m.lab}</div><div class="segs">${segs}</div><div class="meter-stat ${m.on?'':'muted'}">${esc(m.stat)}</div></div>`;
   }).join('');
 
-  const F=[{section:'Proof of origin'}];
+  // ── PRIMARY: what the web shows (reverse search + fact-check lead) ──
+  const F=[{section:'What the web shows'}];
+  F.push({id:'r-reverse',ic:'srv',name:'Where it appears',state:['srv', serverOn?'Checking…':'Local only'],read:'Where this image shows up across the web — the best signal for catching recycled or miscaptioned images, and a hint at its origin.',data: serverOn?'Querying the connected server…':'Open this on the deployed server to run web checks.'});
+  F.push({id:'r-fact',ic:'srv',name:'Fact-check record',state:['srv', serverOn?'Checking…':'Local only'],read:'Whether fact-checkers have already debunked this exact image (matched by fingerprint + found captions).',data: serverOn?'Querying the connected server…':'Open this on the deployed server to run web checks.'});
+
+  // ── SECONDARY: what the file itself shows (condensed) ──
+  F.push({section:'What the file shows'});
   F.push(scan.c2paAI
-    ? {ic:'ai',name:'Content Credentials',state:['ai','AI-declared'],read:'This file carries a Content Credential that declares AI generation'+(scan.c2paSigner?` (signed by ${scan.c2paSigner})`:'')+'. A strong, embedded signal of AI origin.',data:'C2PA: digitalSourceType = trainedAlgorithmicMedia'+(scan.c2paSigner?'\nSigner: '+scan.c2paSigner:'')}
+    ? {ic:'ai',name:'Provenance (Content Credential)',state:['ai','Declares AI'],read:'This file carries a Content Credential that declares AI generation'+(scan.c2paSigner?` (signed by ${scan.c2paSigner})`:'')+'. A strong, embedded signal of AI origin.',data:'C2PA digitalSourceType = trainedAlgorithmicMedia'+(scan.c2paSigner?'\nSigner: '+scan.c2paSigner:'')}
     : scan.c2pa
-    ? {ic:'present',name:'Content Credentials',state:['present','Present'],read:'Carries a Content Credential — a record of how it was made and edited'+(scan.c2paSigner?` (signed by ${scan.c2paSigner})`:'')+'. Most ordinary images have none. Reads what the credential declares; legal-grade proof needs a full C2PA verifier.',data:'C2PA / JUMBF manifest detected'+(scan.c2paSigner?'\nSigner: '+scan.c2paSigner:'')}
-    : {ic:'absent',name:'Content Credentials',state:['absent','None'],read:'No Content Credential survived in this file. Normal today — and routinely stripped by social uploads — so absence proves nothing on its own.',data:'No C2PA manifest present'});
-  F.push(scan.aiName
-    ? {ic:'ai',name:'AI-generator marker',state:['ai','Detected'],read:'A marker tied to an AI image generator is embedded in the file. A strong positive signal the image was AI-generated.',data:'AI tool marker: “'+esc(scan.aiName)+'”'}
-    : scan.c2paAI
-    ? {ic:'ai',name:'AI-generator marker',state:['ai','Via credential'],read:'AI generation is declared in the Content Credential above. No separate generator name string was found.',data:'AI declared via C2PA digitalSourceType'}
-    : {ic:'absent',name:'AI-generator marker',state:['absent','None'],read:'No AI-generator marker in the file. Most AI tools embed a Content Credential rather than a name string, and re-uploads strip both — so absence is NOT evidence the image is real.',data:'No embedded AI-generator marker'});
+    ? {ic:'present',name:'Provenance (Content Credential)',state:['present','Present'],read:'Carries a Content Credential — a record of how it was made'+(scan.c2paSigner?` (signed by ${scan.c2paSigner})`:'')+(scan.aiName?` (also an AI-tool marker: “${scan.aiName}”)`:'')+'. Most images carry none. Reads what the credential declares; legal-grade proof needs a full verifier.',data:'C2PA / JUMBF manifest'+(scan.c2paSigner?'\nSigner: '+scan.c2paSigner:'')}
+    : scan.aiName
+    ? {ic:'ai',name:'Provenance (Content Credential)',state:['ai','AI marker'],read:`No Content Credential, but the file carries a marker tied to an AI image generator (“${scan.aiName}”) — a strong sign it was AI-made.`,data:'AI tool marker: '+esc(scan.aiName)}
+    : {ic:'absent',name:'Provenance (Content Credential)',state:['absent','None'],read:'No Content Credential survived — and none of the major AI tools’ markers. Routinely stripped by social uploads, so absence proves nothing on its own.',data:'No C2PA manifest present'});
 
-  F.push({section:'Camera origin'});
-  F.push(cam
-    ? {ic:'present',name:'Capture device',state:['present','On record'],read:'Records the camera that captured it — consistent with a real device photo (though device tags can be edited).',data:'Make/Model: '+esc(cam)+(exif.lensModel?'\nLens: '+esc(exif.lensModel):'')+(exif.focalLength?'\nFocal: '+Math.round(exif.focalLength)+'mm':'')}
-    : {ic:'caution',name:'Capture device',state:['caution','Not recorded'],read:'No camera make/model. Typical of screenshots, downloads, re-saves, and most AI images — but also of anything a platform stripped. Inconclusive alone.',data:'No camera Make/Model tags'});
-  F.push(when
-    ? {ic:'present',name:'Capture time',state:['present','On record'],read:'Claims when the shot was taken. Cross-check against when it started circulating — a mismatch is worth a closer look.',data:'Timestamp: '+esc(when)}
-    : {ic:'absent',name:'Capture time',state:['absent','None'],read:'No capture timestamp. Often stripped on upload; not meaningful alone.',data:'No DateTimeOriginal tag'});
-  F.push({ic:exif.__gps?'present':'absent',name:'Location data',state:exif.__gps?['present','Embedded']:['absent','None'],read:exif.__gps?'GPS coordinates are embedded — a real location fingerprint to verify against the claimed scene.':'No GPS. Routinely removed by phones and platforms for privacy; absence is expected.',data:exif.__gps?'GPS tags present in EXIF':'No GPS tags'});
-
-  F.push({section:'Edits & handling'});
-  F.push(sw
-    ? {ic:'caution',name:'Editing software',state:['caution','Detected'],read:'Passed through editing software. Editing is normal and not proof of deception — but the pixels aren\'t straight-out-of-camera.',data:'Software trace: '+esc(sw)}
-    : {ic:'absent',name:'Editing software',state:['absent','None found'],read:'No editor signature in metadata. A determined editor can remove this, so it\'s not a guarantee.',data:'No editor software tags'});
-  const hasMeta=cam||when||exif.__gps;
-  F.push({ic:hasMeta?'present':'caution',name:'Metadata completeness',state:hasMeta?['present','Intact']:['caution','Stripped'],read:hasMeta?'Retains original metadata — more for you to verify against.':'Metadata largely absent — consistent with a screenshot, social re-upload, or generated image. Describes handling, not whether the content is true.',data:'Present: '+([cam&&'device',when&&'time',exif.__gps&&'gps',sw&&'software',exif.orientation&&'orientation'].filter(Boolean).join(', ')||'none')});
-
-  F.push({section:'Cross-checks — server'});
-  F.push({id:'r-reverse',ic:'srv',name:'Reverse image search',state:['srv', serverOn?'Checking…':'Local only'],read:'Find everywhere this image appears and the earliest known copy — the single best signal for catching recycled or miscaptioned images.',data: serverOn?'Querying the connected server…':'Open this on the deployed server to run web checks.'});
-  F.push({id:'r-fact',ic:'srv',name:'Known-fake database',state:['srv', serverOn?'Checking…':'Local only'],read:'Check whether fact-checkers already debunked this exact image (matched by fingerprint + found captions).',data: serverOn?'Querying the connected server…':'Open this on the deployed server to run web checks.'});
+  const metaBits=[]; if(cam) metaBits.push('camera “'+cam+'”'); if(when) metaBits.push('timestamp'); if(exif.__gps) metaBits.push('GPS'); if(sw) metaBits.push('editor “'+sw+'”');
+  const hasAny=cam||when||exif.__gps;
+  F.push(hasAny
+    ? {ic:'present',name:'Camera & metadata',state:['present', cam?'Camera data':'Partial'],read:'The file still carries: '+metaBits.join(' · ')+'. Real signals you can cross-check against the claimed time and place (though metadata can be edited).',data:metaBits.join('\n')}
+    : {ic:'caution',name:'Camera & metadata',state:['caution','Stripped'],read:'No camera, timestamp, or GPS — the metadata is stripped. Normal for screenshots, social re-uploads, and most AI images.'+(sw?` (Editor trace: “${sw}”.)`:'')+' Describes handling, not whether the content is true.',data:'Metadata stripped'+(sw?'\nEditor: '+sw:'')});
 
   renderRows(F,hash,serverOn);
   if(serverOn) publishToServer(file,hash,F,readObj).catch(()=>{});
@@ -459,6 +448,19 @@ function renderRows(F,hash,serverOn){
   setTimeout(()=>$('#preview').classList.remove('scanning'),2300);
 }
 
+/* read meaning from WHERE an image appears — AI-art sites hint AI; news outlets hint a real photo */
+function interpretDomains(domains){
+  const d=(domains||[]).map(x=>String(x).toLowerCase());
+  const hit=arr=>d.filter(x=>arr.some(k=>x.includes(k)));
+  const AI=['aiease','monica.im','civitai','lexica','midjourney','leonardo.ai','openart','nightcafe','seaart','tensor.art','starryai','deepai','craiyon','getimg','playground','dezgo','stablediffusion','perchance','pixai','mage.space','dream.ai','artbreeder','fotor'];
+  const STOCK=['vecteezy','shutterstock','istockphoto','gettyimages','freepik','stock.adobe','dreamstime','alamy','123rf','depositphotos','pexels','unsplash','pixabay'];
+  const NEWS=['reuters','apnews','bbc.','nytimes','washingtonpost','theguardian','cnn.','npr.org','aljazeera','bloomberg','afp.','snopes','politifact','factcheck','dpa.com'];
+  const ai=hit(AI), st=hit(STOCK), nw=hit(NEWS);
+  if(ai.length) return {flag:'ai', text:`Some of these are AI-image sites (${ai.slice(0,2).join(', ')}) — a hint this may be AI-generated.`};
+  if(nw.length) return {flag:'news', text:`Appears on news outlets (${nw.slice(0,2).join(', ')}) — consistent with a real news photo; verify the original context.`};
+  if(st.length) return {flag:'stock', text:`Appears on stock-image sites (${st.slice(0,2).join(', ')}) — could be stock or AI stock art.`};
+  return null;
+}
 function setRow(id,{ic,state,read,data}){
   const el=document.getElementById(id); if(!el) return;
   const[cls,label]=state;
@@ -490,7 +492,9 @@ async function publishToServer(file,hash,localFindings,readObj){
   if(rev.connected){
     const doms=(rev.domains||[]).slice(0,4).join(', ');
     const e=rev.earliest;
-    setRow('r-reverse',{ic:'signal',state:['signal','Checked'],read:'Searched the web for other copies of this image.',
+    const interp=interpretDomains(rev.domains);
+    setRow('r-reverse',{ic: interp&&interp.flag==='ai'?'ai':'signal',state:['signal',(rev.count||0)>0?'Found':'Checked'],
+      read:'Where this image appears across the web.'+(interp?' '+interp.text:''),
       data:`Found across ${rev.count||0}+ place(s).`+(doms?`\nAppears on: ${doms}${(rev.count||0)>4?' …and more':''}.`:'')+(e?`\nEarliest dated copy: ${e.source||''} ${e.date||''}`:'')});
     setWebMeter(Math.min(3,(rev.count?2:1)),'Checked');
   } else {

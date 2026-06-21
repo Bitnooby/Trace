@@ -196,6 +196,20 @@ app.get('/api/proxy-image', async (req, res) => {
 });
 
 /* ---------- the shareable result page (unfurls on social) ---------- */
+// read meaning from WHERE an image appears (mirrors the client)
+function interpretDomains(domains){
+  const d=(domains||[]).map(x=>String(x).toLowerCase());
+  const hit=arr=>d.filter(x=>arr.some(k=>x.includes(k)));
+  const AI=['aiease','monica.im','civitai','lexica','midjourney','leonardo.ai','openart','nightcafe','seaart','tensor.art','starryai','deepai','craiyon','getimg','playground','dezgo','stablediffusion','perchance','pixai','mage.space','dream.ai','artbreeder','fotor'];
+  const STOCK=['vecteezy','shutterstock','istockphoto','gettyimages','freepik','stock.adobe','dreamstime','alamy','123rf','depositphotos','pexels','unsplash','pixabay'];
+  const NEWS=['reuters','apnews','bbc.','nytimes','washingtonpost','theguardian','cnn.','npr.org','aljazeera','bloomberg','afp.','snopes','politifact','factcheck','dpa.com'];
+  const ai=hit(AI), st=hit(STOCK), nw=hit(NEWS);
+  if(ai.length) return {flag:'ai', text:`Some of these are AI-image sites (${ai.slice(0,2).join(', ')}) — a hint this may be AI-generated.`};
+  if(nw.length) return {flag:'news', text:`Appears on news outlets (${nw.slice(0,2).join(', ')}) — consistent with a real news photo; verify the original context.`};
+  if(st.length) return {flag:'stock', text:`Appears on stock-image sites (${st.slice(0,2).join(', ')}) — could be stock or AI stock art.`};
+  return null;
+}
+
 app.get('/check/:id', (req, res) => {
   const r = store.get(req.params.id);
   const base = `${req.protocol}://${req.get('host')}`;
@@ -203,7 +217,7 @@ app.get('/check/:id', (req, res) => {
 
   const esc = t => (t == null ? '' : String(t)).replace(/[<>&"]/g, c => ({ '<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;' }[c]));
   // render stored file-checks, but skip the two cross-check placeholders — we paint authoritative versions below
-  const skip = new Set(['Reverse image search', 'Known-fake database']);
+  const skip = new Set(['Where it appears', 'Fact-check record']);
   const rows = (r.findings || []).filter(f => !f.section && !skip.has(f.name)).map(f =>
     `<div class="row"><div><div class="n">${esc(f.name)}</div><div class="rd">${esc(f.read)}</div></div><span class="st st-${f.ic}">${esc((f.state||[])[1]||'')}</span></div>`
   ).join('');
@@ -212,15 +226,17 @@ app.get('/check/:id', (req, res) => {
   if (r.reverse?.connected) {
     const e = r.reverse.earliest;
     const doms = (r.reverse.domains || []).slice(0, 4).join(', ');
-    web += `<div class="row"><div><div class="n">Reverse image search</div><div class="rd">Found across ${r.reverse.count||0}+ place(s).${doms?` Appears on: ${esc(doms)}${(r.reverse.count||0)>4?' …and more':''}.`:''}${e?` Earliest dated copy: ${esc(e.source||'')} (${esc(e.date||'')}).`:''}</div></div><span class="st st-signal">Checked</span></div>`;
+    const interp = interpretDomains(r.reverse.domains);
+    const st = interp && interp.flag === 'ai' ? 'st-ai' : 'st-signal';
+    web += `<div class="row"><div><div class="n">Where it appears</div><div class="rd">Where this image appears across the web.${interp?' '+esc(interp.text):''}<br><span class="dim">Found across ${r.reverse.count||0}+ place(s).${doms?` Appears on: ${esc(doms)}${(r.reverse.count||0)>4?' …and more':''}.`:''}${e?` Earliest dated copy: ${esc(e.source||'')} (${esc(e.date||'')}).`:''}</span></div></div><span class="st ${st}">${(r.reverse.count||0)>0?'Found':'Checked'}</span></div>`;
   }
   if (r.fact?.connected) {
     const claims = r.fact.claims || [];
     if (claims.length) {
       const c = claims.map(x => `${esc(x.publisher||'')}: ${esc(x.rating||'')}`).join(' · ');
-      web += `<div class="row"><div><div class="n">Known-fake database</div><div class="rd">Fact-checkers have addressed claims tied to this image. ${c}</div></div><span class="st st-caution">Matches</span></div>`;
+      web += `<div class="row"><div><div class="n">Fact-check record</div><div class="rd">Fact-checkers have addressed claims tied to this image. ${c}</div></div><span class="st st-caution">Matches</span></div>`;
     } else {
-      web += `<div class="row"><div><div class="n">Known-fake database</div><div class="rd">No published fact-check matched this image — no debunk is on record, which is not the same as "verified true."</div></div><span class="st st-present">No debunk</span></div>`;
+      web += `<div class="row"><div><div class="n">Fact-check record</div><div class="rd">No published fact-check matched this image — no debunk is on record, which is not the same as "verified true."</div></div><span class="st st-present">No debunk</span></div>`;
     }
   }
 
@@ -244,7 +260,12 @@ app.get('/check/:id', (req, res) => {
     ${r.hasImage ? `<img class="hero" src="${base}/img/${r.id}" alt="" />` : ''}
     ${banner}
     <div class="note"><b>Evidence, not a verdict.</b> This reads the file, not the truth of the caption — weigh it yourself.</div>
-    <div class="card">${rows}${web}</div>
+    <div class="card">
+      <div class="sec">What the web shows</div>
+      ${web || '<div class="row"><div><div class="rd dim">Web checks run on the live server (reverse search + fact-check).</div></div></div>'}
+      <div class="sec">What the file shows</div>
+      ${rows}
+    </div>
     <a class="cta" href="${base}/">Check your own image →</a>
   `, base, og));
 });
@@ -276,6 +297,9 @@ function page(title, body, base, og) {
     .st-present{background:#E6F3EC;color:var(--ok)}.st-absent{background:var(--paper);color:#8A95A4;border:1px solid var(--line)}
     .st-caution{background:#FAF0DD;color:var(--warn)}.st-signal{background:#E6F4F4;color:var(--signal)}
     .st-ai{background:#EDEBFA;color:var(--ai)}.st-srv{background:#EDF0FA;color:var(--srv)}
+    .sec{padding:9px 16px;background:var(--paper);font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#8A95A4;border-top:1px solid var(--line)}
+    .sec:first-child{border-top:none}
+    .dim{color:#8A95A4;font-size:12px}
     .cta{display:block;text-align:center;margin-top:18px;background:var(--ink);color:#fff;text-decoration:none;font-weight:600;padding:14px;border-radius:11px}
   </style></head><body><div class="w">
     <div class="brand"><span class="g"><svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg"><g stroke="#fff" stroke-width="8" stroke-linecap="round"><line x1="32" y1="34" x2="50" y2="52"/><line x1="50" y1="52" x2="70" y2="36"/><line x1="50" y1="52" x2="52" y2="78"/></g><circle cx="32" cy="34" r="8" fill="#fff"/><circle cx="70" cy="36" r="8" fill="#fff"/><circle cx="52" cy="78" r="8" fill="#fff"/><circle cx="50" cy="52" r="9.5" fill="#fff"/></svg></span> Trace</div>${body}
