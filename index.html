@@ -48,6 +48,10 @@
   @keyframes flash{0%{transform:scale(1)}40%{transform:scale(1.02)}100%{transform:scale(1)}}
   .alt{display:flex;align-items:center;justify-content:center;gap:10px;margin-top:14px;flex-wrap:wrap}
   .alt-or{color:var(--faint);font-size:13px}
+  .caprow{margin-top:11px}
+  .caprow input{width:100%;border:1px solid var(--line);border-radius:12px;padding:11px 14px;font-family:var(--body);font-size:13.5px;color:var(--ink);background:var(--card)}
+  .caprow input::placeholder{color:var(--faint)}
+  .caprow input:focus{outline:2px solid var(--signal-bright);outline-offset:1px;border-color:transparent}
   .linkrow{display:flex;gap:7px;align-items:center}
   .linkrow input{width:148px;border:1px solid var(--line-strong);border-radius:12px;padding:11px 13px;font-family:var(--mono);font-size:13px;color:var(--ink);background:var(--card);min-width:0}
   .linkrow input:focus{outline:2px solid var(--signal-bright);outline-offset:1px;border-color:transparent}
@@ -191,6 +195,10 @@
         <input type="text" id="linkInput" placeholder="paste a link" />
         <button class="btn ghost" id="linkBtn">Check</button>
       </div>
+    </div>
+
+    <div class="caprow">
+      <input type="text" id="captionInput" placeholder="Optional — paste the caption it was posted with (catches false context)" aria-label="Optional caption the image was posted with" />
     </div>
 
     <p class="reassure">No sign-up · your image never leaves your device for the file checks</p>
@@ -591,7 +599,11 @@ async function publishToServer(file,hash,localFindings,readObj,sig,claim){
 }
 
 /* wiring */
-function handleFile(file, claim){ if(!file||!file.type.startsWith('image/')){alert('Please choose an image file (JPEG, PNG, or WebP).');return;} rowsEl.classList.remove('revealed'); analyze(file, claim||null); }
+function handleFile(file, claim){
+  if(!file||!file.type.startsWith('image/')){alert('Please choose an image file (JPEG, PNG, or WebP).');return;}
+  if(!claim){ const capEl=$('#captionInput'); const cap=capEl?capEl.value.trim():''; if(cap) claim={title:cap, source:'the caption you gave'}; }
+  rowsEl.classList.remove('revealed'); analyze(file, claim||null);
+}
 dropzone.addEventListener('click',()=>fileInput.click());
 dropzone.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();fileInput.click();}});
 fileInput.addEventListener('change',e=>handleFile(e.target.files[0]));
@@ -661,7 +673,7 @@ $('#linkBtn').addEventListener('click',checkLink);
 $('#linkInput').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();checkLink();}});
 /* if a full URL is pasted into the box, just run it */
 $('#linkInput').addEventListener('paste',()=>{ setTimeout(()=>{ const v=$('#linkInput').value.trim(); if(/^https?:\/\/\S+$/i.test(v)) checkLink(); },40); });
-function reset(){dossier.classList.remove('show');$('#submitPanel').style.display='';$('#linkInput').value='';fileInput.value='';window.scrollTo({top:0,behavior:'smooth'});}
+function reset(){dossier.classList.remove('show');$('#submitPanel').style.display='';$('#linkInput').value='';const cap=$('#captionInput');if(cap)cap.value='';fileInput.value='';window.scrollTo({top:0,behavior:'smooth'});}
 $('#againBtn').addEventListener('click',reset); $('#resetBtn').addEventListener('click',reset);
 $('#copyBtn').addEventListener('click',()=>{const t=$('#shareUrl').textContent;navigator.clipboard?.writeText(t).then(()=>{const b=$('#copyBtn'),o=b.textContent;b.textContent='Copied';setTimeout(()=>b.textContent=o,1400);});});
 
