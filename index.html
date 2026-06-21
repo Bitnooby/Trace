@@ -376,29 +376,22 @@ function renderRead(rd){
    It reports the WEIGHT of evidence and leaves the final judgement to the person.
    prov:  'ai-cred' | 'ai-marker' | 'credential' | 'camera' | 'stripped'
    reach: 'ai' | 'news' | 'stock' | null      debunked: bool      count: # of places */
-function computeConsensus(prov, reach, debunked, count){
+function computeConsensus(prov, reach, debunked, count, examined, vintage){
   const E='Consensus — the evidence, weighed';
   const places = count ? ` (seen on ${count}+ sites)` : '';
-  if(debunked) return {eyebrow:E,level:'debunk',badge:'Debunked on record',
-    line:`Fact-checkers have already debunked this image — the strongest signal there is. Treat it as false${places}.`,action:'Don’t share it. Read the fact-check below.'};
-  if(prov==='ai-cred') return {eyebrow:E,level:'ai',badge:'AI-generated',
-    line:'Its Content Credential declares it AI-generated — a strong, embedded signal'+(reach==='ai'?', and it lives on AI-image sites too. Everything lines up.':'.'),action:'Treat as AI-generated.'};
-  if(prov==='camera' && reach==='ai') return {eyebrow:E,level:'scrutinize',badge:'Signals conflict',
-    line:'It carries camera data (suggests a real photo) yet lives on AI-image sites (suggests AI). These disagree — genuinely uncertain.',action:'Don’t assume either way; find the original source.'};
-  if(prov==='ai-marker' && reach==='ai') return {eyebrow:E,level:'scrutinize',badge:'Leans AI-generated',
-    line:`It carries an AI-tool marker and lives on AI-image sites${places}. No hard proof, but the weight points to AI.`,action:'Lean AI — but verify before you rely on it. Your call.'};
-  if(reach==='ai') return {eyebrow:E,level:'scrutinize',badge:'Leans AI-generated',
-    line:`No provenance survived, but this image lives on AI-image sites${places} — circumstantial, but it leans AI-generated.`,action:'Lean AI — but it’s circumstantial. Your call.'};
-  if(prov==='ai-marker') return {eyebrow:E,level:'scrutinize',badge:'Possible AI',
-    line:'It carries a marker associated with an AI generator — a sign it may be AI-made.',action:'Treat with suspicion; verify before relying on it.'};
-  if(prov==='camera') return {eyebrow:E,level:'photo',badge:'Leans authentic',
-    line:'It carries camera/capture data'+(reach==='news'?' and appears on news outlets':'')+' — consistent with a real photo, though metadata can be edited.',action:'Cross-check the time and place it claims. Your call.'};
-  if(reach==='news') return {eyebrow:E,level:'photo',badge:'Leans authentic',
-    line:`The file is stripped, but this image appears on news outlets${places} — consistent with a real news photo.`,action:'Verify the original context before sharing.'};
-  if(prov==='credential') return {eyebrow:E,level:'verified',badge:'Origin on record',
-    line:'It carries a Content Credential — a real record of how it was made. Most images carry none.',action:'Read the credential below; for legal-grade proof use a full verifier.'};
-  return {eyebrow:E,level:'scrutinize',badge:'Unverified',
-    line:'No provenance survived, and no fact-check is on record'+(reach==='stock'?'; it appears on stock-image sites':'')+`${places}. It could be real, AI, or real media with a false caption.`,action:'Find the original source and check the caption matches. Genuinely your call.'};
+  const vint = vintage ? ` It’s been online since ${vintage} — be wary of any caption claiming it’s recent or breaking.` : '';
+  const r=(level,badge,line,action)=>({eyebrow:E,level,badge,action,line:(level==='debunk'||level==='ai')?line:line+vint});
+  if(debunked) return r('debunk','Debunked on record',`Fact-checkers have already debunked this image — the strongest signal there is. Treat it as false${places}.`,'Don’t share it. Read the fact-check below.');
+  if(prov==='ai-cred') return r('ai','AI-generated','Its Content Credential declares it AI-generated — a strong, embedded signal'+(reach==='ai'?', and it lives on AI-image sites too. Everything lines up.':'.'),'Treat as AI-generated.');
+  if(examined) return r('scrutinize','Likely fact-checked',`This image appears on fact-checking sites${places} — very likely it’s already been examined. Read what they concluded before trusting any caption attached to it.`,'Open the fact-checkers’ page and see their verdict before sharing.');
+  if(prov==='camera' && reach==='ai') return r('scrutinize','Signals conflict','It carries camera data (suggests a real photo) yet lives on AI-image sites (suggests AI). These disagree — genuinely uncertain.','Don’t assume either way; find the original source.');
+  if(prov==='ai-marker' && reach==='ai') return r('scrutinize','Leans AI-generated',`It carries an AI-tool marker and lives on AI-image sites${places}. No hard proof, but the weight points to AI.`,'Lean AI — but verify before you rely on it. Your call.');
+  if(reach==='ai') return r('scrutinize','Leans AI-generated',`No provenance survived, but this image lives on AI-image sites${places} — circumstantial, but it leans AI-generated.`,'Lean AI — but it’s circumstantial. Your call.');
+  if(prov==='ai-marker') return r('scrutinize','Possible AI','It carries a marker associated with an AI generator — a sign it may be AI-made.','Treat with suspicion; verify before relying on it.');
+  if(prov==='camera') return r('photo','Leans authentic','It carries camera/capture data'+(reach==='news'?' and appears on news outlets':'')+' — consistent with a real photo, though metadata can be edited.','Cross-check the time and place it claims. Your call.');
+  if(reach==='news') return r('photo','Leans authentic',`The file is stripped, but this image appears on news outlets${places} — consistent with a real news photo.`,'Verify the original context before sharing.');
+  if(prov==='credential') return r('verified','Origin on record','It carries a Content Credential — a real record of how it was made. Most images carry none.','Read the credential below; for legal-grade proof use a full verifier.');
+  return r('scrutinize','Unverified','No provenance survived, and no fact-check is on record'+(reach==='stock'?'; it appears on stock-image sites':'')+`${places}. It could be real, AI, or real media with a false caption.`,'Find the original source and check the caption matches. Genuinely your call.');
 }
 
 let lastFile=null, lastHash=null;
@@ -485,14 +478,39 @@ function renderRows(F,hash,serverOn){
 function interpretDomains(domains){
   const d=(domains||[]).map(x=>String(x).toLowerCase());
   const hit=arr=>d.filter(x=>arr.some(k=>x.includes(k)));
-  const AI=['aiease','monica.im','civitai','lexica','midjourney','leonardo.ai','openart','nightcafe','seaart','tensor.art','starryai','deepai','craiyon','getimg','playground','dezgo','stablediffusion','perchance','pixai','mage.space','dream.ai','artbreeder','fotor'];
+  const AI=['aiease','monica.im','civitai','lexica','midjourney','leonardo.ai','openart','nightcafe','seaart','tensor.art','starryai','deepai','craiyon','getimg','playground','dezgo','stablediffusion','perchance','pixai','mage.space','dream.ai','artbreeder','fotor','ideogram','krea.ai','prompthero'];
   const STOCK=['vecteezy','shutterstock','istockphoto','gettyimages','freepik','stock.adobe','dreamstime','alamy','123rf','depositphotos','pexels','unsplash','pixabay'];
-  const NEWS=['reuters','apnews','bbc.','nytimes','washingtonpost','theguardian','cnn.','npr.org','aljazeera','bloomberg','afp.','snopes','politifact','factcheck','dpa.com'];
-  const ai=hit(AI), st=hit(STOCK), nw=hit(NEWS);
-  if(ai.length) return {flag:'ai', text:`Some of these are AI-image sites (${ai.slice(0,2).join(', ')}) — a hint this may be AI-generated.`};
-  if(nw.length) return {flag:'news', text:`Appears on news outlets (${nw.slice(0,2).join(', ')}) — consistent with a real news photo; verify the original context.`};
-  if(st.length) return {flag:'stock', text:`Appears on stock-image sites (${st.slice(0,2).join(', ')}) — could be stock or AI stock art.`};
-  return null;
+  const NEWS=['reuters','apnews','bbc.','nytimes','washingtonpost','theguardian','cnn.','npr.org','aljazeera','bloomberg','afp.','dpa.com','forbes','independent.co','nbcnews','cbsnews','abcnews','usatoday'];
+  const FC=['snopes','politifact','factcheck','fullfact','leadstories','checkyourfact','truthorfiction','altnews','boomlive','factly','maldita','verafiles','africacheck','factcrescendo','newschecker','vishvasnews'];
+  const SOCIAL=['x.com','twitter','facebook','fb.com','fb.watch','instagram','tiktok','reddit','youtube','youtu.be','pinterest','threads.net','tumblr','vk.com','weibo','t.me','telegram','linkedin','snapchat','mastodon','bsky','bluesky','9gag','imgur','quora'];
+  const MARKET=['amazon','ebay','etsy','aliexpress','walmart','temu','redbubble','teepublic','zazzle','wish.com'];
+  const u=a=>[...new Set(a)]; const name=a=>u(a).slice(0,2).join(', ');
+  const ai=hit(AI),st=hit(STOCK),nw=hit(NEWS),fc=hit(FC),so=hit(SOCIAL),mk=hit(MARKET);
+  let flag=null; if(ai.length)flag='ai'; else if(nw.length)flag='news'; else if(st.length)flag='stock';
+  let parts=[];
+  if(fc.length)parts.push(`fact-checking sites (${name(fc)})`);
+  if(nw.length)parts.push(`news outlets (${name(nw)})`);
+  if(ai.length)parts.push(`AI-image sites (${name(ai)})`);
+  if(st.length)parts.push(`stock sites (${name(st)})`);
+  if(so.length)parts.push(`social platforms (${name(so)})`);
+  if(mk.length)parts.push(`product listings (${name(mk)})`);
+  let text='';
+  if(parts.length){
+    text='Appears on '+parts.slice(0,3).join(', ')+(parts.length>3?', and more':'')+'. ';
+    if(fc.length)text+='Showing up on fact-checkers means it’s likely already been examined — read their conclusion.';
+    else if(ai.length)text+='Presence on AI-image sites hints this may be AI-generated.';
+    else if(nw.length)text+='Presence on news outlets is consistent with a real photo — verify the original context.';
+    else if(mk.length&&so.length)text+='A widely-reused image (social + merch), not a unique original — check the specific claim attached to it.';
+    else if(so.length)text+='Heavily shared on social — which says nothing about whether it’s real. Check the caption.';
+    else if(st.length)text+='Could be stock or AI stock art.';
+  }
+  return {flag,examined:fc.length>0,fcHits:u(fc).slice(0,3),text:text.trim(),found:parts.length>0};
+}
+function vintageYear(earliest){
+  if(!earliest||!earliest.date)return null;
+  const m=String(earliest.date).match(/(19|20)\d{2}/); if(!m)return null;
+  const y=+m[0], now=new Date().getFullYear();
+  return (y>=1990&&y<=now-1)?y:null;
 }
 function setRow(id,{ic,state,read,data}){
   const el=document.getElementById(id); if(!el) return;
@@ -524,16 +542,16 @@ async function publishToServer(file,hash,localFindings,readObj,sig){
   $('#scUrl').textContent=link.replace(/^https?:\/\//,'');
 
   const rev=j.reverse||{};
-  let reachFlag=null, count=0;
+  let reachFlag=null, count=0, examined=false, vintage=null;
   if(rev.connected){
     count=rev.count||0;
     const doms=(rev.domains||[]).slice(0,4).join(', ');
     const e=rev.earliest;
     const interp=interpretDomains(rev.domains);
-    reachFlag = interp ? interp.flag : null;
-    setRow('r-reverse',{ic: reachFlag==='ai'?'ai':'signal',state:['signal',count>0?'Found':'Checked'],
-      read:'Where this image appears across the web.'+(interp?' '+interp.text:''),
-      data:`Found across ${count}+ place(s).`+(doms?`\nAppears on: ${doms}${count>4?' …and more':''}.`:'')+(e?`\nEarliest dated copy: ${e.source||''} ${e.date||''}`:'')});
+    reachFlag = interp.flag; examined = interp.examined; vintage = vintageYear(e);
+    setRow('r-reverse',{ic: examined?'caution':(reachFlag==='ai'?'ai':'signal'),state:['signal',count>0?'Found':'Checked'],
+      read:'Where this image appears across the web.'+(interp.found?' '+interp.text:''),
+      data:`Found across ${count}+ place(s).`+(doms?`\nAppears on: ${doms}${count>4?' …and more':''}.`:'')+(e?`\nEarliest dated copy: ${e.source||''} ${e.date||''}`+(vintage?`  ·  online since ${vintage}`:''):'')});
     setWebMeter(Math.min(3,(count?2:1)),'Checked');
   } else {
     setRow('r-reverse',{ic:'srv',state:['srv','Add key'],read:'Server is live, but the reverse-search key isn\'t set yet (Phase 2).',data: rev.note||'Set SERPAPI_KEY to enable.'});
@@ -551,9 +569,9 @@ async function publishToServer(file,hash,localFindings,readObj,sig){
     setRow('r-fact',{ic:'srv',state:['srv','Add key'],read:'Server is live, but the fact-check key isn\'t set yet (Phase 2).',data: fc.note||'Set FACTCHECK_KEY to enable.'});
   }
 
-  // ── CONSENSUS: now that the web streams are in, weigh all three into the top read ──
+  // ── CONSENSUS: now that the web streams are in, weigh every signal into the top read ──
   if(rev.connected || debunked){
-    renderRead(computeConsensus(prov, reachFlag, debunked, count));
+    renderRead(computeConsensus(prov, reachFlag, debunked, count, examined, vintage));
   }
 }
 

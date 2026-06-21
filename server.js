@@ -200,30 +200,58 @@ app.get('/api/proxy-image', async (req, res) => {
 function interpretDomains(domains){
   const d=(domains||[]).map(x=>String(x).toLowerCase());
   const hit=arr=>d.filter(x=>arr.some(k=>x.includes(k)));
-  const AI=['aiease','monica.im','civitai','lexica','midjourney','leonardo.ai','openart','nightcafe','seaart','tensor.art','starryai','deepai','craiyon','getimg','playground','dezgo','stablediffusion','perchance','pixai','mage.space','dream.ai','artbreeder','fotor'];
+  const AI=['aiease','monica.im','civitai','lexica','midjourney','leonardo.ai','openart','nightcafe','seaart','tensor.art','starryai','deepai','craiyon','getimg','playground','dezgo','stablediffusion','perchance','pixai','mage.space','dream.ai','artbreeder','fotor','ideogram','krea.ai','prompthero'];
   const STOCK=['vecteezy','shutterstock','istockphoto','gettyimages','freepik','stock.adobe','dreamstime','alamy','123rf','depositphotos','pexels','unsplash','pixabay'];
-  const NEWS=['reuters','apnews','bbc.','nytimes','washingtonpost','theguardian','cnn.','npr.org','aljazeera','bloomberg','afp.','snopes','politifact','factcheck','dpa.com'];
-  const ai=hit(AI), st=hit(STOCK), nw=hit(NEWS);
-  if(ai.length) return {flag:'ai', text:`Some of these are AI-image sites (${ai.slice(0,2).join(', ')}) — a hint this may be AI-generated.`};
-  if(nw.length) return {flag:'news', text:`Appears on news outlets (${nw.slice(0,2).join(', ')}) — consistent with a real news photo; verify the original context.`};
-  if(st.length) return {flag:'stock', text:`Appears on stock-image sites (${st.slice(0,2).join(', ')}) — could be stock or AI stock art.`};
-  return null;
+  const NEWS=['reuters','apnews','bbc.','nytimes','washingtonpost','theguardian','cnn.','npr.org','aljazeera','bloomberg','afp.','dpa.com','forbes','independent.co','nbcnews','cbsnews','abcnews','usatoday'];
+  const FC=['snopes','politifact','factcheck','fullfact','leadstories','checkyourfact','truthorfiction','altnews','boomlive','factly','maldita','verafiles','africacheck','factcrescendo','newschecker','vishvasnews'];
+  const SOCIAL=['x.com','twitter','facebook','fb.com','fb.watch','instagram','tiktok','reddit','youtube','youtu.be','pinterest','threads.net','tumblr','vk.com','weibo','t.me','telegram','linkedin','snapchat','mastodon','bsky','bluesky','9gag','imgur','quora'];
+  const MARKET=['amazon','ebay','etsy','aliexpress','walmart','temu','redbubble','teepublic','zazzle','wish.com'];
+  const u=a=>[...new Set(a)]; const name=a=>u(a).slice(0,2).join(', ');
+  const ai=hit(AI),st=hit(STOCK),nw=hit(NEWS),fc=hit(FC),so=hit(SOCIAL),mk=hit(MARKET);
+  let flag=null; if(ai.length)flag='ai'; else if(nw.length)flag='news'; else if(st.length)flag='stock';
+  let parts=[];
+  if(fc.length)parts.push(`fact-checking sites (${name(fc)})`);
+  if(nw.length)parts.push(`news outlets (${name(nw)})`);
+  if(ai.length)parts.push(`AI-image sites (${name(ai)})`);
+  if(st.length)parts.push(`stock sites (${name(st)})`);
+  if(so.length)parts.push(`social platforms (${name(so)})`);
+  if(mk.length)parts.push(`product listings (${name(mk)})`);
+  let text='';
+  if(parts.length){
+    text='Appears on '+parts.slice(0,3).join(', ')+(parts.length>3?', and more':'')+'. ';
+    if(fc.length)text+='Showing up on fact-checkers means it’s likely already been examined — read their conclusion.';
+    else if(ai.length)text+='Presence on AI-image sites hints this may be AI-generated.';
+    else if(nw.length)text+='Presence on news outlets is consistent with a real photo — verify the original context.';
+    else if(mk.length&&so.length)text+='A widely-reused image (social + merch), not a unique original — check the specific claim attached to it.';
+    else if(so.length)text+='Heavily shared on social — which says nothing about whether it’s real. Check the caption.';
+    else if(st.length)text+='Could be stock or AI stock art.';
+  }
+  return {flag,examined:fc.length>0,fcHits:u(fc).slice(0,3),text:text.trim(),found:parts.length>0};
+}
+function vintageYear(earliest){
+  if(!earliest||!earliest.date)return null;
+  const m=String(earliest.date).match(/(19|20)\d{2}/); if(!m)return null;
+  const y=+m[0], now=new Date().getFullYear();
+  return (y>=1990&&y<=now-1)?y:null;
 }
 
 // CONSENSUS — weigh all three evidence streams into one honest read (mirrors the client)
-function computeConsensus(prov, reach, debunked, count){
+function computeConsensus(prov, reach, debunked, count, examined, vintage){
   const E='Consensus — the evidence, weighed';
   const places = count ? ` (seen on ${count}+ sites)` : '';
-  if(debunked) return {eyebrow:E,level:'debunk',badge:'Debunked on record',line:`Fact-checkers have already debunked this image — the strongest signal there is. Treat it as false${places}.`};
-  if(prov==='ai-cred') return {eyebrow:E,level:'ai',badge:'AI-generated',line:'Its Content Credential declares it AI-generated — a strong, embedded signal'+(reach==='ai'?', and it lives on AI-image sites too. Everything lines up.':'.')};
-  if(prov==='camera' && reach==='ai') return {eyebrow:E,level:'scrutinize',badge:'Signals conflict',line:'It carries camera data (suggests a real photo) yet lives on AI-image sites (suggests AI). These disagree — genuinely uncertain.'};
-  if(prov==='ai-marker' && reach==='ai') return {eyebrow:E,level:'scrutinize',badge:'Leans AI-generated',line:`It carries an AI-tool marker and lives on AI-image sites${places}. No hard proof, but the weight points to AI.`};
-  if(reach==='ai') return {eyebrow:E,level:'scrutinize',badge:'Leans AI-generated',line:`No provenance survived, but this image lives on AI-image sites${places} — circumstantial, but it leans AI-generated.`};
-  if(prov==='ai-marker') return {eyebrow:E,level:'scrutinize',badge:'Possible AI',line:'It carries a marker associated with an AI generator — a sign it may be AI-made.'};
-  if(prov==='camera') return {eyebrow:E,level:'photo',badge:'Leans authentic',line:'It carries camera/capture data'+(reach==='news'?' and appears on news outlets':'')+' — consistent with a real photo, though metadata can be edited.'};
-  if(reach==='news') return {eyebrow:E,level:'photo',badge:'Leans authentic',line:`The file is stripped, but this image appears on news outlets${places} — consistent with a real news photo.`};
-  if(prov==='credential') return {eyebrow:E,level:'verified',badge:'Origin on record',line:'It carries a Content Credential — a real record of how it was made. Most images carry none.'};
-  return {eyebrow:E,level:'scrutinize',badge:'Unverified',line:'No provenance survived, and no fact-check is on record'+(reach==='stock'?'; it appears on stock-image sites':'')+`${places}. It could be real, AI, or real media with a false caption.`};
+  const vint = vintage ? ` It’s been online since ${vintage} — be wary of any caption claiming it’s recent or breaking.` : '';
+  const r=(level,badge,line)=>({eyebrow:E,level,badge,line:(level==='debunk'||level==='ai')?line:line+vint});
+  if(debunked) return r('debunk','Debunked on record',`Fact-checkers have already debunked this image — the strongest signal there is. Treat it as false${places}.`);
+  if(prov==='ai-cred') return r('ai','AI-generated','Its Content Credential declares it AI-generated — a strong, embedded signal'+(reach==='ai'?', and it lives on AI-image sites too. Everything lines up.':'.'));
+  if(examined) return r('scrutinize','Likely fact-checked',`This image appears on fact-checking sites${places} — very likely it’s already been examined. Read what they concluded before trusting any caption attached to it.`);
+  if(prov==='camera' && reach==='ai') return r('scrutinize','Signals conflict','It carries camera data (suggests a real photo) yet lives on AI-image sites (suggests AI). These disagree — genuinely uncertain.');
+  if(prov==='ai-marker' && reach==='ai') return r('scrutinize','Leans AI-generated',`It carries an AI-tool marker and lives on AI-image sites${places}. No hard proof, but the weight points to AI.`);
+  if(reach==='ai') return r('scrutinize','Leans AI-generated',`No provenance survived, but this image lives on AI-image sites${places} — circumstantial, but it leans AI-generated.`);
+  if(prov==='ai-marker') return r('scrutinize','Possible AI','It carries a marker associated with an AI generator — a sign it may be AI-made.');
+  if(prov==='camera') return r('photo','Leans authentic','It carries camera/capture data'+(reach==='news'?' and appears on news outlets':'')+' — consistent with a real photo, though metadata can be edited.');
+  if(reach==='news') return r('photo','Leans authentic',`The file is stripped, but this image appears on news outlets${places} — consistent with a real news photo.`);
+  if(prov==='credential') return r('verified','Origin on record','It carries a Content Credential — a real record of how it was made. Most images carry none.');
+  return r('scrutinize','Unverified','No provenance survived, and no fact-check is on record'+(reach==='stock'?'; it appears on stock-image sites':'')+`${places}. It could be real, AI, or real media with a false caption.`);
 }
 
 app.get('/check/:id', (req, res) => {
@@ -243,8 +271,9 @@ app.get('/check/:id', (req, res) => {
     const e = r.reverse.earliest;
     const doms = (r.reverse.domains || []).slice(0, 4).join(', ');
     const interp = interpretDomains(r.reverse.domains);
-    const st = interp && interp.flag === 'ai' ? 'st-ai' : 'st-signal';
-    web += `<div class="row"><div><div class="n">Where it appears</div><div class="rd">Where this image appears across the web.${interp?' '+esc(interp.text):''}<br><span class="dim">Found across ${r.reverse.count||0}+ place(s).${doms?` Appears on: ${esc(doms)}${(r.reverse.count||0)>4?' …and more':''}.`:''}${e?` Earliest dated copy: ${esc(e.source||'')} (${esc(e.date||'')}).`:''}</span></div></div><span class="st ${st}">${(r.reverse.count||0)>0?'Found':'Checked'}</span></div>`;
+    const vintage = vintageYear(e);
+    const st = interp.examined ? 'st-caution' : (interp.flag === 'ai' ? 'st-ai' : 'st-signal');
+    web += `<div class="row"><div><div class="n">Where it appears</div><div class="rd">Where this image appears across the web.${interp.found?' '+esc(interp.text):''}<br><span class="dim">Found across ${r.reverse.count||0}+ place(s).${doms?` Appears on: ${esc(doms)}${(r.reverse.count||0)>4?' …and more':''}.`:''}${e?` Earliest dated copy: ${esc(e.source||'')} (${esc(e.date||'')})${vintage?` · online since ${vintage}`:''}.`:''}</span></div></div><span class="st ${st}">${(r.reverse.count||0)>0?'Found':'Checked'}</span></div>`;
   }
   if (r.fact?.connected) {
     const claims = r.fact.claims || [];
@@ -259,9 +288,12 @@ app.get('/check/:id', (req, res) => {
   // CONSENSUS — weigh provenance + where-it-appears + fact-check into one honest read
   const provFromLevel = { ai:'ai-marker', verified:'credential', photo:'camera', scrutinize:'stripped' };
   const prov = r.prov || provFromLevel[(r.read||{}).level] || 'stripped';
-  const reachFlag = (r.reverse?.connected ? (interpretDomains(r.reverse.domains)||{}).flag : null) || null;
+  const cInterp = r.reverse?.connected ? interpretDomains(r.reverse.domains) : { flag:null, examined:false };
+  const reachFlag = cInterp.flag || null;
+  const examined = !!cInterp.examined;
+  const vintage = r.reverse?.connected ? vintageYear(r.reverse.earliest) : null;
   const debunked = !!(r.fact?.connected && (r.fact.claims || []).length);
-  const rd = computeConsensus(prov, reachFlag, debunked, r.reverse?.count || 0);
+  const rd = computeConsensus(prov, reachFlag, debunked, r.reverse?.count || 0, examined, vintage);
   const rbCls = { ai: 'rb-red', debunk: 'rb-red', verified: 'rb-green', photo: 'rb-blue', scrutinize: 'rb-amber' }[rd.level] || 'rb-amber';
   const banner = `<div class="rb ${rbCls}"><div class="rb-eye">${esc(rd.eyebrow||'')}</div><div class="rb-b">${esc(rd.badge)}</div><div class="rb-l">${esc(rd.line)}</div></div>`;
 
