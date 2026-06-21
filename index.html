@@ -300,12 +300,38 @@ function readExif(buf){
   return out;
 }
 function scanBytes(buf){
-  const b=new Uint8Array(buf),cap=Math.min(b.length,2500000);let s='';
+  const b=new Uint8Array(buf),cap=Math.min(b.length,3000000);let s='';
   for(let i=0;i<cap;i++){const c=b[i];s+=(c>=32&&c<127)?String.fromCharCode(c):'\u0000';}
   const low=s.toLowerCase(), has=a=>a.find(k=>low.includes(k));
-  return{
-    c2pa:has(['jumbf','c2pa.manifest','urn:uuid:c2pa','contentauth','c2pa.assertions','c2pa']),
-    ai:has(['midjourney','stable diffusion','stable-diffusion','dall-e','dall·e','adobe firefly','firefly','imagined with ai','made with google ai','sora','flux.1','ideogram','gpt-image']),
+
+  // Content Credential (C2PA) manifest present?
+  const c2pa=has(['jumdc2pa','jumbf','c2pa.assertions','c2pa.claim','c2pa.manifest','urn:uuid:c2pa','contentauth']);
+  // Does the credential DECLARE AI generation? (IPTC digitalSourceType — stored as readable text)
+  const c2paAI=low.includes('trainedalgorithmicmedia')||low.includes('compositewithtrainedalgorithmicmedia');
+  // Loose AI-generator name markers (in metadata or credential)
+  const aiName=has(['adobe firefly','firefly','dall-e','dall·e','dalle','openai','midjourney','stable diffusion','stable-diffusion','gemini','imagen','made with google','google ai','grok imagine','sora','flux.1','ideogram','gpt-image']);
+  // Read the signer/tool from the credential's claim_generator (exact CBOR text-string length, not a guess)
+  let signer=null;
+  (function(){
+    const needle=[99,108,97,105,109,95,103,101,110,101,114,97,116,111,114]; // "claim_generator"
+    const lim=Math.min(b.length-needle.length-3,3000000);
+    for(let i=0;i<lim && !signer;i++){
+      let ok=true; for(let j=0;j<needle.length;j++){ if(b[i+j]!==needle[j]){ok=false;break;} }
+      if(!ok) continue;
+      let p=i+needle.length; if(b[p]===0x5f) continue; // skip "claim_generator_info"
+      const t=b[p]; let len=-1,ds=p+1;
+      if(t>=0x60&&t<=0x77) len=t-0x60; else if(t===0x78){len=b[p+1];ds=p+2;} else if(t===0x79){len=(b[p+1]<<8)|b[p+2];ds=p+3;} else continue;
+      if(len<3||len>120) continue;
+      let out=""; for(let k=0;k<len&&ds+k<b.length;k++){const c=b[ds+k]; if(c<32||c>126){out="";break;} out+=String.fromCharCode(c);}
+      if(out.length>=3) signer=out.slice(0,64);
+    }
+  })();
+  if(signer) signer=signer.replace(/\s+/g,' ').trim();
+
+  return {
+    c2pa, c2paAI, c2paSigner: c2pa?signer:null,
+    ai: c2paAI||aiName,        // any AI signal at all
+    aiName: aiName||null,      // loose generator-name match
     editor:has(['adobe photoshop','photoshop','gimp','lightroom','canva','figma','pixelmator','affinity photo','snapseed','picsart','paint.net','luminar'])
   };
 }
@@ -314,12 +340,23 @@ function dims(file){return new Promise(res=>{const img=new Image(),u=URL.createO
 const fmtSize=b=>b<1024?b+' B':b<1048576?(b/1024).toFixed(0)+' KB':(b/1048576).toFixed(2)+' MB';
 const esc=t=>(t==null?'':String(t)).replace(/[<>&]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
 
-/* the one-line "instant read" — a verdict on the EVIDENCE, never on real/fake */
+/* the one-line "instant read" — a verdict on the EVIDENCE, never a guess about real/fake */
 function computeRead(c){
-  if(c.ai) return {level:'ai',badge:'AI-origin marker found',line:'This file carries a signature from an AI image generator — strong evidence it was AI-made.',action:'Treat as AI-generated unless a trusted source proves otherwise.'};
-  if(c.c2pa) return {level:'verified',badge:'Origin record present',line:'Carries Content Credentials — a verifiable, tamper-evident record of how this image was made.',action:'Open the credentials to read its history.'};
-  if(c.cam||c.when||c.gps) return {level:'photo',badge:'Original-photo signals',line:'Carries camera/capture data consistent with a real photo — though such data can be edited.',action:'Cross-check the time and place against what it claims to show.'};
-  return {level:'scrutinize',badge:'Verify the context',line:'No origin data in the file — typical of screenshots and social re-uploads. The file alone can’t tell you whether the caption is true.',action:'Find the original source and check the caption actually matches it.'};
+  if(c.c2paAI) return {level:'ai',badge:'AI-generated (Content Credential)',
+    line:'This file carries a Content Credential that declares it was AI-generated'+(c.c2paSigner?` — signed by ${c.c2paSigner}`:'')+'. A strong, embedded signal of AI origin.',
+    action:'Treat as AI-generated. (For legal-grade proof, verify the credential with a full C2PA verifier.)'};
+  if(c.aiName && !c.c2pa) return {level:'ai',badge:'AI-generator marker found',
+    line:`The file contains a marker tied to an AI image generator (“${c.aiName}”). A strong sign it was AI-made.`,
+    action:'Treat as AI-generated unless a trusted source shows otherwise.'};
+  if(c.c2pa) return {level:'verified',badge:'Content Credential present',
+    line:'This file carries a Content Credential — a record of how it was made'+(c.c2paSigner?` (signed by ${c.c2paSigner})`:'')+'. Most images carry none.',
+    action:'Read the credential below; for legal-grade proof use a full C2PA verifier.'};
+  if(c.cam||c.when||c.gps) return {level:'photo',badge:'Original-photo signals',
+    line:'Carries camera/capture data consistent with a real photo — though such data can be edited.',
+    action:'Cross-check the time and place against what it claims to show.'};
+  return {level:'scrutinize',badge:'Unverified',
+    line:'No provenance survived in this file — expected for screenshots and social re-uploads. It can’t tell you whether this is a real photo, AI-generated, or real media wrapped in a false caption.',
+    action:'Find the original source and check the caption actually matches it.'};
 }
 const READ_CLASS={ai:'r-red',debunk:'r-red',verified:'r-green',photo:'r-blue',scrutinize:'r-amber'};
 function renderRead(rd){
@@ -351,12 +388,12 @@ async function analyze(file){
   const sw=exif.software||scan.editor;
   const serverOn=apiBase()!==null;
 
-  const readObj=computeRead({ai:scan.ai,c2pa:scan.c2pa,cam,when,gps:exif.__gps});
+  const readObj=computeRead({c2paAI:scan.c2paAI,c2paSigner:scan.c2paSigner,c2pa:scan.c2pa,aiName:scan.aiName,cam,when,gps:exif.__gps});
   renderRead(readObj);
 
   const camScore=(cam?1:0)+(when?1:0)+(exif.__gps?1:0);
   const meters=[
-    {lab:'Provenance', on:(scan.c2pa?2:0)+(scan.ai?1:0), max:3, stat: scan.c2pa?'Credentials found':(scan.ai?'AI marker found':'None found')},
+    {lab:'Provenance', on:(scan.c2pa?2:0)+(scan.ai?1:0), max:3, stat: scan.c2paAI?'AI-declared':(scan.c2pa?'Credential present':(scan.aiName?'AI marker':'None found'))},
     {lab:'Camera origin', on:camScore, max:3, stat: camScore?`${camScore}/3 on record`:'Not recorded'},
     {lab:'Editing', on: sw?2:0, max:3, stat: sw?'Trace detected':'None found'},
     {id:'m-web', lab:'Web cross-check', on:0, max:3, srv:true, stat: serverOn?'Checking…':'Local only'}
@@ -367,12 +404,16 @@ async function analyze(file){
   }).join('');
 
   const F=[{section:'Proof of origin'}];
-  F.push(scan.c2pa
-    ? {ic:'present',name:'Content Credentials',state:['present','Found'],read:'Carries a Content Credentials (C2PA) manifest — a tamper-evident record of how it was made and edited. Most ordinary images have none; full cryptographic validation needs a verifier.',data:'C2PA / JUMBF provenance manifest detected'}
-    : {ic:'absent',name:'Content Credentials',state:['absent','None'],read:'No provenance manifest. Normal for most images today — absence proves nothing on its own.',data:'No C2PA manifest present'});
-  F.push(scan.ai
-    ? {ic:'ai',name:'AI-origin marker',state:['ai','Detected'],read:'A signature tied to an AI image generator is embedded in the file. A strong positive signal the image was AI-generated.',data:'AI tool signature: “'+esc(scan.ai)+'”'}
-    : {ic:'absent',name:'AI-origin marker',state:['absent','None'],read:'No AI-generator signature in the file. Most AI tools embed nothing, so absence is NOT evidence the image is real.',data:'No embedded AI-generator marker'});
+  F.push(scan.c2paAI
+    ? {ic:'ai',name:'Content Credentials',state:['ai','AI-declared'],read:'This file carries a Content Credential that declares AI generation'+(scan.c2paSigner?` (signed by ${scan.c2paSigner})`:'')+'. A strong, embedded signal of AI origin.',data:'C2PA: digitalSourceType = trainedAlgorithmicMedia'+(scan.c2paSigner?'\nSigner: '+scan.c2paSigner:'')}
+    : scan.c2pa
+    ? {ic:'present',name:'Content Credentials',state:['present','Present'],read:'Carries a Content Credential — a record of how it was made and edited'+(scan.c2paSigner?` (signed by ${scan.c2paSigner})`:'')+'. Most ordinary images have none. Reads what the credential declares; legal-grade proof needs a full C2PA verifier.',data:'C2PA / JUMBF manifest detected'+(scan.c2paSigner?'\nSigner: '+scan.c2paSigner:'')}
+    : {ic:'absent',name:'Content Credentials',state:['absent','None'],read:'No Content Credential survived in this file. Normal today — and routinely stripped by social uploads — so absence proves nothing on its own.',data:'No C2PA manifest present'});
+  F.push(scan.aiName
+    ? {ic:'ai',name:'AI-generator marker',state:['ai','Detected'],read:'A marker tied to an AI image generator is embedded in the file. A strong positive signal the image was AI-generated.',data:'AI tool marker: “'+esc(scan.aiName)+'”'}
+    : scan.c2paAI
+    ? {ic:'ai',name:'AI-generator marker',state:['ai','Via credential'],read:'AI generation is declared in the Content Credential above. No separate generator name string was found.',data:'AI declared via C2PA digitalSourceType'}
+    : {ic:'absent',name:'AI-generator marker',state:['absent','None'],read:'No AI-generator marker in the file. Most AI tools embed a Content Credential rather than a name string, and re-uploads strip both — so absence is NOT evidence the image is real.',data:'No embedded AI-generator marker'});
 
   F.push({section:'Camera origin'});
   F.push(cam
@@ -459,7 +500,7 @@ async function publishToServer(file,hash,localFindings,readObj){
     // a published debunk is the strongest signal we have → escalate the top read
     renderRead({level:'debunk',badge:'Fact-check debunk on record',line:'Fact-checkers have published a debunk tied to this image. '+txt,action:'Read the fact-check before sharing — this has already been flagged.'});
   } else if(fc.connected){
-    setRow('r-fact',{ic:'present',state:['present','Clear'],read:'No matching debunk found by the fact-check source.',data:'No fact-check matches.'});
+    setRow('r-fact',{ic:'present',state:['present','No debunk'],read:'No published fact-check matched this image. That means no debunk is on record — not that it’s verified true.',data:'No fact-check matches found.'});
   } else {
     setRow('r-fact',{ic:'srv',state:['srv','Add key'],read:'Server is live, but the fact-check key isn\'t set yet (Phase 2).',data: fc.note||'Set FACTCHECK_KEY to enable.'});
   }

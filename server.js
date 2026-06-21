@@ -220,12 +220,12 @@ app.get('/check/:id', (req, res) => {
       const c = claims.map(x => `${esc(x.publisher||'')}: ${esc(x.rating||'')}`).join(' · ');
       web += `<div class="row"><div><div class="n">Known-fake database</div><div class="rd">Fact-checkers have addressed claims tied to this image. ${c}</div></div><span class="st st-caution">Matches</span></div>`;
     } else {
-      web += `<div class="row"><div><div class="n">Known-fake database</div><div class="rd">No published fact-check found for this image. (Means "no debunk on record," not "verified true.")</div></div><span class="st st-present">Clear</span></div>`;
+      web += `<div class="row"><div><div class="n">Known-fake database</div><div class="rd">No published fact-check matched this image — no debunk is on record, which is not the same as "verified true."</div></div><span class="st st-present">No debunk</span></div>`;
     }
   }
 
   // instant-read banner — verdict on the evidence, escalated to a debunk if fact-checkers flagged it
-  let rd = r.read || { level: 'scrutinize', badge: 'Verify the context', line: 'No origin data in the file. The file alone can’t tell you whether the caption is true.' };
+  let rd = r.read || { level: 'scrutinize', badge: 'Unverified', line: 'No provenance survived in this file. It can’t tell you whether this is a real photo, AI-generated, or real media with a false caption.' };
   if (r.fact?.connected && (r.fact.claims || []).length) {
     rd = { level: 'debunk', badge: 'Fact-check debunk on record', line: 'Fact-checkers have published a debunk tied to this image. Read it before sharing.' };
   }
