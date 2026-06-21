@@ -99,6 +99,8 @@ app.post('/api/publish', upload.single('image'), async (req, res) => {
     try { findings = JSON.parse(req.body.findings || '[]'); } catch { /* ignore */ }
     let read = null;
     try { read = JSON.parse(req.body.read || 'null'); } catch { /* ignore */ }
+    let claim = null;
+    try { claim = JSON.parse(req.body.claim || 'null'); } catch { /* ignore */ }
 
     if (req.file) imgStore.set(id, { buf: req.file.buffer, mime: req.file.mimetype });
 
@@ -107,11 +109,22 @@ app.post('/api/publish', upload.single('image'), async (req, res) => {
 
     const reverse = publicImageUrl ? await reverseSearch(publicImageUrl) : { connected: false };
     const captions = (reverse.matches || []).map(m => m.title);
-    const fact = await factCheck(captions);
+    // the submitted claim is the most direct thing to fact-check — check it first
+    const claimText = claim && (claim.title || claim.description) ? (claim.title || claim.description) : null;
+    const fact = await factCheck([claimText, ...captions].filter(Boolean));
 
-    const report = { id, sha256: sha, createdAt: Date.now(), findings, read, reverse, fact, prov: (req.body.prov || null), hasImage: !!req.file };
+    // recontextualization: claim presents the image as current, but the image is demonstrably older
+    let claimOut = null;
+    if (claim && (claim.title || claim.description)) {
+      const vy = vintageYear(reverse.earliest);
+      const recent = claimImpliesRecent(`${claim.title || ''} ${claim.description || ''}`);
+      const mismatch = (recent && vy) ? { is: true, year: vy } : { is: false };
+      claimOut = { title: claim.title || '', description: claim.description || '', source: claim.source || '', mismatch };
+    }
+
+    const report = { id, sha256: sha, createdAt: Date.now(), findings, read, reverse, fact, prov: (req.body.prov || null), claim: claimOut, hasImage: !!req.file };
     store.set(id, report);
-    res.json({ id, reverse, fact });
+    res.json({ id, reverse, fact, claim: claimOut });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -153,6 +166,32 @@ async function toCappedBuffer(resp) {
   return buf;
 }
 
+/* ---------- the claim agent: read the headline/caption wrapped around an image ---------- */
+function clip(s,n){ s=(s||'').toString().replace(/\s+/g,' ').trim(); return s.length>n?s.slice(0,n-1)+'…':s; }
+function decodeEntities(s){ return (s||'').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&#0?39;|&apos;|&#x27;/gi,"'").replace(/&#8217;|&rsquo;/gi,'’').replace(/&#8220;|&ldquo;/gi,'“').replace(/&#8221;|&rdquo;/gi,'”').replace(/&#8211;|&ndash;/gi,'–').replace(/&#8212;|&mdash;/gi,'—').replace(/&nbsp;/g,' ').replace(/&#(\d+);/g,(_,n)=>String.fromCharCode(+n)); }
+function claimImpliesRecent(text){
+  const t=(text||'').toLowerCase();
+  if(/\b(today|yesterday|breaking|just now|right now|moments? ago|this (week|month|morning|afternoon|evening)|happening now|live now|latest|developing)\b/.test(t)) return true;
+  const now=new Date().getFullYear();
+  if(new RegExp('\\b('+now+'|'+(now-1)+')\\b').test(t)) return true;
+  return false;
+}
+function extractClaim(html, host){
+  const meta=(props)=>{
+    for(const p of props){
+      let m = html.match(new RegExp('<meta[^>]+(?:property|name)=["\']'+p+'["\'][^>]*?content=(["\'])([\\s\\S]*?)\\1','i'))
+           || html.match(new RegExp('<meta[^>]+content=(["\'])([\\s\\S]*?)\\1[^>]*?(?:property|name)=["\']'+p+'["\']','i'));
+      if(m && m[2]) return decodeEntities(m[2]);
+    }
+    return '';
+  };
+  const titleTag=(html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)||[])[1];
+  const title=meta(['og:title','twitter:title']) || decodeEntities(titleTag||'');
+  const description=meta(['og:description','twitter:description','description']);
+  if(!title && !description) return null;
+  return { title: clip(title,200), description: clip(description,300), source: host };
+}
+
 app.get('/api/proxy-image', async (req, res) => {
   const raw = (req.query.url || '').toString().trim();
   let u;
@@ -180,6 +219,9 @@ app.get('/api/proxy-image', async (req, res) => {
              || find(/<meta[^>]+content=["']([^"']+)["'][^>]+name=["']twitter:image["']/i);
       if (!img) return res.status(422).json({ error: 'No image found on that page. Sites like X, Instagram and TikTok block automatic fetching — use Copy image → Ctrl+V instead.' });
       img = new URL(img, u.href).href;
+      // read the claim wrapped around the image (the caption is where the lie usually lives)
+      const claim = extractClaim(html, u.hostname);
+      if (claim) { res.set('X-Trace-Claim', encodeURIComponent(JSON.stringify(claim))); res.set('Access-Control-Expose-Headers', 'X-Trace-Claim'); }
       const ir = await grab(img, 'image/*');
       const ict = (ir.headers.get('content-type') || '').toLowerCase();
       if (!ict.startsWith('image/')) return res.status(422).json({ error: 'Found a preview link but it wasn’t an image.' });
@@ -236,13 +278,14 @@ function vintageYear(earliest){
 }
 
 // CONSENSUS — weigh all three evidence streams into one honest read (mirrors the client)
-function computeConsensus(prov, reach, debunked, count, examined, vintage){
+function computeConsensus(prov, reach, debunked, count, examined, vintage, mismatchYear){
   const E='Consensus — the evidence, weighed';
   const places = count ? ` (seen on ${count}+ sites)` : '';
   const vint = vintage ? ` It’s been online since ${vintage} — be wary of any caption claiming it’s recent or breaking.` : '';
   const r=(level,badge,line)=>({eyebrow:E,level,badge,line:(level==='debunk'||level==='ai')?line:line+vint});
   if(debunked) return r('debunk','Debunked on record',`Fact-checkers have already debunked this image — the strongest signal there is. Treat it as false${places}.`);
   if(prov==='ai-cred') return r('ai','AI-generated','Its Content Credential declares it AI-generated — a strong, embedded signal'+(reach==='ai'?', and it lives on AI-image sites too. Everything lines up.':'.'));
+  if(mismatchYear) return {eyebrow:E,level:'scrutinize',badge:'Likely recontextualized',line:`The caption presents this as current, but the image has been online since ${mismatchYear} — the classic recontextualization move: a real, older photo paired with a false new caption.`};
   if(examined) return r('scrutinize','Likely fact-checked',`This image appears on fact-checking sites${places} — very likely it’s already been examined. Read what they concluded before trusting any caption attached to it.`);
   if(prov==='camera' && reach==='ai') return r('scrutinize','Signals conflict','It carries camera data (suggests a real photo) yet lives on AI-image sites (suggests AI). These disagree — genuinely uncertain.');
   if(prov==='ai-marker' && reach==='ai') return r('scrutinize','Leans AI-generated',`It carries an AI-tool marker and lives on AI-image sites${places}. No hard proof, but the weight points to AI.`);
@@ -267,6 +310,15 @@ app.get('/check/:id', (req, res) => {
   ).join('');
 
   let web = '';
+  if (r.claim && (r.claim.title || r.claim.description)) {
+    const cl = r.claim, mm = cl.mismatch || {};
+    const txt = esc('“'+(cl.title||cl.description)+'”'+(cl.source?'  — '+cl.source:''));
+    if (mm.is) {
+      web += `<div class="row"><div><div class="n">The claim</div><div class="rd">This claim presents the image as current, but the image has been online since ${mm.year} — a classic recontextualization (old image, new caption). Check what it originally showed.<br><span class="dim">${txt}</span></div></div><span class="st st-caution">Mismatch</span></div>`;
+    } else {
+      web += `<div class="row"><div><div class="n">The claim</div><div class="rd">The headline or caption wrapped around this image, weighed against the fact-check record and the image’s age. Whether the photo truly depicts it is your call.<br><span class="dim">${txt}</span></div></div><span class="st st-present">Recorded</span></div>`;
+    }
+  }
   if (r.reverse?.connected) {
     const e = r.reverse.earliest;
     const doms = (r.reverse.domains || []).slice(0, 4).join(', ');
@@ -293,7 +345,8 @@ app.get('/check/:id', (req, res) => {
   const examined = !!cInterp.examined;
   const vintage = r.reverse?.connected ? vintageYear(r.reverse.earliest) : null;
   const debunked = !!(r.fact?.connected && (r.fact.claims || []).length);
-  const rd = computeConsensus(prov, reachFlag, debunked, r.reverse?.count || 0, examined, vintage);
+  const mismatchYear = (r.claim && r.claim.mismatch && r.claim.mismatch.is) ? r.claim.mismatch.year : null;
+  const rd = computeConsensus(prov, reachFlag, debunked, r.reverse?.count || 0, examined, vintage, mismatchYear);
   const rbCls = { ai: 'rb-red', debunk: 'rb-red', verified: 'rb-green', photo: 'rb-blue', scrutinize: 'rb-amber' }[rd.level] || 'rb-amber';
   const banner = `<div class="rb ${rbCls}"><div class="rb-eye">${esc(rd.eyebrow||'')}</div><div class="rb-b">${esc(rd.badge)}</div><div class="rb-l">${esc(rd.line)}</div></div>`;
 

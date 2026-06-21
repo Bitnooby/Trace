@@ -376,13 +376,14 @@ function renderRead(rd){
    It reports the WEIGHT of evidence and leaves the final judgement to the person.
    prov:  'ai-cred' | 'ai-marker' | 'credential' | 'camera' | 'stripped'
    reach: 'ai' | 'news' | 'stock' | null      debunked: bool      count: # of places */
-function computeConsensus(prov, reach, debunked, count, examined, vintage){
+function computeConsensus(prov, reach, debunked, count, examined, vintage, mismatchYear){
   const E='Consensus — the evidence, weighed';
   const places = count ? ` (seen on ${count}+ sites)` : '';
   const vint = vintage ? ` It’s been online since ${vintage} — be wary of any caption claiming it’s recent or breaking.` : '';
   const r=(level,badge,line,action)=>({eyebrow:E,level,badge,action,line:(level==='debunk'||level==='ai')?line:line+vint});
   if(debunked) return r('debunk','Debunked on record',`Fact-checkers have already debunked this image — the strongest signal there is. Treat it as false${places}.`,'Don’t share it. Read the fact-check below.');
   if(prov==='ai-cred') return r('ai','AI-generated','Its Content Credential declares it AI-generated — a strong, embedded signal'+(reach==='ai'?', and it lives on AI-image sites too. Everything lines up.':'.'),'Treat as AI-generated.');
+  if(mismatchYear) return {eyebrow:E,level:'scrutinize',badge:'Likely recontextualized',line:`The caption presents this as current, but the image has been online since ${mismatchYear} — the classic recontextualization move: a real, older photo paired with a false new caption.`,action:'Find where this image first appeared and what it actually showed. Your call.'};
   if(examined) return r('scrutinize','Likely fact-checked',`This image appears on fact-checking sites${places} — very likely it’s already been examined. Read what they concluded before trusting any caption attached to it.`,'Open the fact-checkers’ page and see their verdict before sharing.');
   if(prov==='camera' && reach==='ai') return r('scrutinize','Signals conflict','It carries camera data (suggests a real photo) yet lives on AI-image sites (suggests AI). These disagree — genuinely uncertain.','Don’t assume either way; find the original source.');
   if(prov==='ai-marker' && reach==='ai') return r('scrutinize','Leans AI-generated',`It carries an AI-tool marker and lives on AI-image sites${places}. No hard proof, but the weight points to AI.`,'Lean AI — but verify before you rely on it. Your call.');
@@ -396,7 +397,7 @@ function computeConsensus(prov, reach, debunked, count, examined, vintage){
 
 let lastFile=null, lastHash=null;
 
-async function analyze(file){
+async function analyze(file, claim){
   lastFile=file;
   const buf=await file.arrayBuffer();
   const exif=readExif(buf), scan=scanBytes(buf), d=await dims(file), hash=await sha256(buf);
@@ -435,6 +436,7 @@ async function analyze(file){
 
   // ── PRIMARY: what the web shows (reverse search + fact-check lead) ──
   const F=[{section:'What the web shows'}];
+  if(claim && (claim.title||claim.description)) F.push({id:'r-claim',ic:'signal',name:'The claim',state:['srv', serverOn?'Checking…':'Recorded'],read:'The headline or caption wrapped around this image — where misinformation usually hides. Trace weighs it against the fact-check record and the image’s age, but can’t judge whether the photo truly depicts it.',data:'“'+(claim.title||claim.description)+'”'+(claim.source?'  — '+claim.source:'')});
   F.push({id:'r-reverse',ic:'srv',name:'Where it appears',state:['srv', serverOn?'Checking…':'Local only'],read:'Where this image shows up across the web — the best signal for catching recycled or miscaptioned images, and a hint at its origin.',data: serverOn?'Querying the connected server…':'Open this on the deployed server to run web checks.'});
   F.push({id:'r-fact',ic:'srv',name:'Fact-check record',state:['srv', serverOn?'Checking…':'Local only'],read:'Whether fact-checkers have already debunked this exact image (matched by fingerprint + found captions).',data: serverOn?'Querying the connected server…':'Open this on the deployed server to run web checks.'});
 
@@ -455,7 +457,7 @@ async function analyze(file){
     : {ic:'caution',name:'Camera & metadata',state:['caution','Stripped'],read:'No camera, timestamp, or GPS — the metadata is stripped. Normal for screenshots, social re-uploads, and most AI images.'+(sw?` (Editor trace: “${sw}”.)`:'')+' Describes handling, not whether the content is true.',data:'Metadata stripped'+(sw?'\nEditor: '+sw:'')});
 
   renderRows(F,hash,serverOn);
-  if(serverOn) publishToServer(file,hash,F,readObj,{c2paAI:scan.c2paAI,aiName:scan.aiName,c2pa:scan.c2pa,hasCamera:!!(cam||when||exif.__gps)}).catch(()=>{});
+  if(serverOn) publishToServer(file,hash,F,readObj,{c2paAI:scan.c2paAI,aiName:scan.aiName,c2pa:scan.c2pa,hasCamera:!!(cam||when||exif.__gps)},claim).catch(()=>{});
 }
 
 function renderRows(F,hash,serverOn){
@@ -527,11 +529,11 @@ function setWebMeter(on,stat){
 }
 
 /* talks to the Trace server's own address; upgrades rows + share link on success */
-async function publishToServer(file,hash,localFindings,readObj,sig){
+async function publishToServer(file,hash,localFindings,readObj,sig,claim){
   sig=sig||{};
   const prov = sig.c2paAI?'ai-cred' : sig.aiName?'ai-marker' : sig.c2pa?'credential' : sig.hasCamera?'camera' : 'stripped';
   const base=apiBase(); if(!base) return;
-  const fd=new FormData(); fd.append('image',file); fd.append('sha256',hash||''); fd.append('findings',JSON.stringify(localFindings)); fd.append('read',JSON.stringify(readObj||null)); fd.append('prov',prov);
+  const fd=new FormData(); fd.append('image',file); fd.append('sha256',hash||''); fd.append('findings',JSON.stringify(localFindings)); fd.append('read',JSON.stringify(readObj||null)); fd.append('prov',prov); fd.append('claim',JSON.stringify(claim||null));
   let j;
   try{ const r=await fetch(base+'/api/publish',{method:'POST',body:fd}); j=await r.json(); }
   catch(e){ return; } // e.g. preview sandbox with no server → leave honest placeholders
@@ -569,14 +571,27 @@ async function publishToServer(file,hash,localFindings,readObj,sig){
     setRow('r-fact',{ic:'srv',state:['srv','Add key'],read:'Server is live, but the fact-check key isn\'t set yet (Phase 2).',data: fc.note||'Set FACTCHECK_KEY to enable.'});
   }
 
-  // ── CONSENSUS: now that the web streams are in, weigh every signal into the top read ──
+  // ── CLAIM AGENT: surface the verdict on the submitted headline/caption ──
+  let mismatchYear=null;
+  const cl=j.claim;
+  if(cl && (cl.title||cl.description)){
+    const mm=cl.mismatch||{};
+    if(mm.is){
+      mismatchYear=mm.year;
+      setRow('r-claim',{ic:'caution',state:['caution','Mismatch'],read:`This claim presents the image as current, but the image has been online since ${mm.year} — a classic recontextualization (old image, new caption). Check what it originally showed.`,data:'“'+(cl.title||cl.description)+'”'+(cl.source?'  — '+cl.source:'')});
+    } else {
+      setRow('r-claim',{ic:'present',state:['present','Recorded'],read:'This is the claim being made with the image. Trace checks it against the fact-check record and the image’s age — but whether the photo truly depicts it is your call.',data:'“'+(cl.title||cl.description)+'”'+(cl.source?'  — '+cl.source:'')});
+    }
+  }
+
+  // ── CONSENSUS: now that every stream is in, weigh them into the top read ──
   if(rev.connected || debunked){
-    renderRead(computeConsensus(prov, reachFlag, debunked, count, examined, vintage));
+    renderRead(computeConsensus(prov, reachFlag, debunked, count, examined, vintage, mismatchYear));
   }
 }
 
 /* wiring */
-function handleFile(file){ if(!file||!file.type.startsWith('image/')){alert('Please choose an image file (JPEG, PNG, or WebP).');return;} rowsEl.classList.remove('revealed'); analyze(file); }
+function handleFile(file, claim){ if(!file||!file.type.startsWith('image/')){alert('Please choose an image file (JPEG, PNG, or WebP).');return;} rowsEl.classList.remove('revealed'); analyze(file, claim||null); }
 dropzone.addEventListener('click',()=>fileInput.click());
 dropzone.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();fileInput.click();}});
 fileInput.addEventListener('change',e=>handleFile(e.target.files[0]));
@@ -633,9 +648,11 @@ async function checkLink(){
       alert(msg+'\n\nReliable trick: right-click the image → “Copy image”, come back here and press Ctrl+V. That works even when a link won’t.');
       return;
     }
+    let claim=null; const ch=r.headers.get('X-Trace-Claim');
+    if(ch){ try{ claim=JSON.parse(decodeURIComponent(ch)); }catch(_){ } }
     const blob=await r.blob();
     if(!blob.type.startsWith('image/')){ alert('That link didn’t return an image.\n\nTry right-click → “Copy image”, then press Ctrl+V here.'); return; }
-    handleFile(new File([blob],'from-link',{type:blob.type}));
+    handleFile(new File([blob],'from-link',{type:blob.type}), claim);
   }catch(_){
     alert('Could not reach that link. Check the address — or right-click the image, “Copy image”, and press Ctrl+V here.');
   }finally{ btn.textContent=label; btn.disabled=false; }
