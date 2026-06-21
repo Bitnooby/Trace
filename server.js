@@ -109,7 +109,7 @@ app.post('/api/publish', upload.single('image'), async (req, res) => {
     const captions = (reverse.matches || []).map(m => m.title);
     const fact = await factCheck(captions);
 
-    const report = { id, sha256: sha, createdAt: Date.now(), findings, read, reverse, fact, hasImage: !!req.file };
+    const report = { id, sha256: sha, createdAt: Date.now(), findings, read, reverse, fact, prov: (req.body.prov || null), hasImage: !!req.file };
     store.set(id, report);
     res.json({ id, reverse, fact });
   } catch (e) {
@@ -210,6 +210,22 @@ function interpretDomains(domains){
   return null;
 }
 
+// CONSENSUS — weigh all three evidence streams into one honest read (mirrors the client)
+function computeConsensus(prov, reach, debunked, count){
+  const E='Consensus — the evidence, weighed';
+  const places = count ? ` (seen on ${count}+ sites)` : '';
+  if(debunked) return {eyebrow:E,level:'debunk',badge:'Debunked on record',line:`Fact-checkers have already debunked this image — the strongest signal there is. Treat it as false${places}.`};
+  if(prov==='ai-cred') return {eyebrow:E,level:'ai',badge:'AI-generated',line:'Its Content Credential declares it AI-generated — a strong, embedded signal'+(reach==='ai'?', and it lives on AI-image sites too. Everything lines up.':'.')};
+  if(prov==='camera' && reach==='ai') return {eyebrow:E,level:'scrutinize',badge:'Signals conflict',line:'It carries camera data (suggests a real photo) yet lives on AI-image sites (suggests AI). These disagree — genuinely uncertain.'};
+  if(prov==='ai-marker' && reach==='ai') return {eyebrow:E,level:'scrutinize',badge:'Leans AI-generated',line:`It carries an AI-tool marker and lives on AI-image sites${places}. No hard proof, but the weight points to AI.`};
+  if(reach==='ai') return {eyebrow:E,level:'scrutinize',badge:'Leans AI-generated',line:`No provenance survived, but this image lives on AI-image sites${places} — circumstantial, but it leans AI-generated.`};
+  if(prov==='ai-marker') return {eyebrow:E,level:'scrutinize',badge:'Possible AI',line:'It carries a marker associated with an AI generator — a sign it may be AI-made.'};
+  if(prov==='camera') return {eyebrow:E,level:'photo',badge:'Leans authentic',line:'It carries camera/capture data'+(reach==='news'?' and appears on news outlets':'')+' — consistent with a real photo, though metadata can be edited.'};
+  if(reach==='news') return {eyebrow:E,level:'photo',badge:'Leans authentic',line:`The file is stripped, but this image appears on news outlets${places} — consistent with a real news photo.`};
+  if(prov==='credential') return {eyebrow:E,level:'verified',badge:'Origin on record',line:'It carries a Content Credential — a real record of how it was made. Most images carry none.'};
+  return {eyebrow:E,level:'scrutinize',badge:'Unverified',line:'No provenance survived, and no fact-check is on record'+(reach==='stock'?'; it appears on stock-image sites':'')+`${places}. It could be real, AI, or real media with a false caption.`};
+}
+
 app.get('/check/:id', (req, res) => {
   const r = store.get(req.params.id);
   const base = `${req.protocol}://${req.get('host')}`;
@@ -240,13 +256,14 @@ app.get('/check/:id', (req, res) => {
     }
   }
 
-  // instant-read banner — verdict on the evidence, escalated to a debunk if fact-checkers flagged it
-  let rd = r.read || { level: 'scrutinize', badge: 'Unverified', line: 'No provenance survived in this file. It can’t tell you whether this is a real photo, AI-generated, or real media with a false caption.' };
-  if (r.fact?.connected && (r.fact.claims || []).length) {
-    rd = { level: 'debunk', badge: 'Fact-check debunk on record', line: 'Fact-checkers have published a debunk tied to this image. Read it before sharing.' };
-  }
+  // CONSENSUS — weigh provenance + where-it-appears + fact-check into one honest read
+  const provFromLevel = { ai:'ai-marker', verified:'credential', photo:'camera', scrutinize:'stripped' };
+  const prov = r.prov || provFromLevel[(r.read||{}).level] || 'stripped';
+  const reachFlag = (r.reverse?.connected ? (interpretDomains(r.reverse.domains)||{}).flag : null) || null;
+  const debunked = !!(r.fact?.connected && (r.fact.claims || []).length);
+  const rd = computeConsensus(prov, reachFlag, debunked, r.reverse?.count || 0);
   const rbCls = { ai: 'rb-red', debunk: 'rb-red', verified: 'rb-green', photo: 'rb-blue', scrutinize: 'rb-amber' }[rd.level] || 'rb-amber';
-  const banner = `<div class="rb ${rbCls}"><div class="rb-b">${esc(rd.badge)}</div><div class="rb-l">${esc(rd.line)}</div></div>`;
+  const banner = `<div class="rb ${rbCls}"><div class="rb-eye">${esc(rd.eyebrow||'')}</div><div class="rb-b">${esc(rd.badge)}</div><div class="rb-l">${esc(rd.line)}</div></div>`;
 
   const desc = (rd.badge || 'Evidence report') + ' — evidence, not a verdict.';
   const og = `
@@ -282,6 +299,7 @@ function page(title, body, base, og) {
     .g svg{width:15px;height:15px}
     .hero{width:100%;border-radius:14px;margin:18px 0;border:1px solid var(--line)}
     .rb{border-radius:13px;padding:16px 18px;margin:14px 0 14px}
+    .rb-eye{font-family:'Space Grotesk',system-ui,sans-serif;font-weight:600;font-size:10px;letter-spacing:.1em;text-transform:uppercase;opacity:.6;margin-bottom:6px}
     .rb-b{font-weight:700;font-size:18px;display:flex;align-items:center;gap:9px}
     .rb-b::before{content:"";width:11px;height:11px;border-radius:50%;background:currentColor;flex:0 0 auto}
     .rb-l{font-size:13.5px;margin-top:7px;line-height:1.5;color:var(--g)}

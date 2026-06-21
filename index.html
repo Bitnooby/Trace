@@ -81,6 +81,7 @@
   .factchip.hash{color:var(--signal);border-color:var(--signal-line);background:var(--signal-wash)}
 
   .read-banner{padding:18px 22px;border-bottom:1px solid var(--line)}
+  .rb-eyebrow{font-family:var(--display);font-weight:600;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;opacity:.62;margin-bottom:7px}
   .rb-badge{font-family:var(--display);font-weight:700;font-size:18px;letter-spacing:-.01em;display:flex;align-items:center;gap:9px;line-height:1.2}
   .rb-badge .dotb{width:11px;height:11px;border-radius:50%;flex:0 0 auto}
   .rb-line{color:var(--graphite);font-size:14px;margin-top:8px;line-height:1.5}
@@ -365,7 +366,36 @@ function computeRead(c){
 const READ_CLASS={ai:'r-red',debunk:'r-red',verified:'r-green',photo:'r-blue',scrutinize:'r-amber'};
 function renderRead(rd){
   const el=$('#readBanner'); el.className='read-banner '+(READ_CLASS[rd.level]||'r-amber');
-  el.innerHTML=`<div class="rb-badge"><span class="dotb"></span>${esc(rd.badge)}</div><div class="rb-line">${esc(rd.line)}</div><div class="rb-action"><b>Do this:</b> ${esc(rd.action)}</div>`;
+  el.innerHTML=`<div class="rb-eyebrow">${esc(rd.eyebrow||'What the file shows')}</div><div class="rb-badge"><span class="dotb"></span>${esc(rd.badge)}</div><div class="rb-line">${esc(rd.line)}</div><div class="rb-action"><b>Do this:</b> ${esc(rd.action)}</div>`;
+}
+
+/* CONSENSUS — the first synthesizer: weigh all three evidence streams into ONE honest read.
+   It reports the WEIGHT of evidence and leaves the final judgement to the person.
+   prov:  'ai-cred' | 'ai-marker' | 'credential' | 'camera' | 'stripped'
+   reach: 'ai' | 'news' | 'stock' | null      debunked: bool      count: # of places */
+function computeConsensus(prov, reach, debunked, count){
+  const E='Consensus — the evidence, weighed';
+  const places = count ? ` (seen on ${count}+ sites)` : '';
+  if(debunked) return {eyebrow:E,level:'debunk',badge:'Debunked on record',
+    line:`Fact-checkers have already debunked this image — the strongest signal there is. Treat it as false${places}.`,action:'Don’t share it. Read the fact-check below.'};
+  if(prov==='ai-cred') return {eyebrow:E,level:'ai',badge:'AI-generated',
+    line:'Its Content Credential declares it AI-generated — a strong, embedded signal'+(reach==='ai'?', and it lives on AI-image sites too. Everything lines up.':'.'),action:'Treat as AI-generated.'};
+  if(prov==='camera' && reach==='ai') return {eyebrow:E,level:'scrutinize',badge:'Signals conflict',
+    line:'It carries camera data (suggests a real photo) yet lives on AI-image sites (suggests AI). These disagree — genuinely uncertain.',action:'Don’t assume either way; find the original source.'};
+  if(prov==='ai-marker' && reach==='ai') return {eyebrow:E,level:'scrutinize',badge:'Leans AI-generated',
+    line:`It carries an AI-tool marker and lives on AI-image sites${places}. No hard proof, but the weight points to AI.`,action:'Lean AI — but verify before you rely on it. Your call.'};
+  if(reach==='ai') return {eyebrow:E,level:'scrutinize',badge:'Leans AI-generated',
+    line:`No provenance survived, but this image lives on AI-image sites${places} — circumstantial, but it leans AI-generated.`,action:'Lean AI — but it’s circumstantial. Your call.'};
+  if(prov==='ai-marker') return {eyebrow:E,level:'scrutinize',badge:'Possible AI',
+    line:'It carries a marker associated with an AI generator — a sign it may be AI-made.',action:'Treat with suspicion; verify before relying on it.'};
+  if(prov==='camera') return {eyebrow:E,level:'photo',badge:'Leans authentic',
+    line:'It carries camera/capture data'+(reach==='news'?' and appears on news outlets':'')+' — consistent with a real photo, though metadata can be edited.',action:'Cross-check the time and place it claims. Your call.'};
+  if(reach==='news') return {eyebrow:E,level:'photo',badge:'Leans authentic',
+    line:`The file is stripped, but this image appears on news outlets${places} — consistent with a real news photo.`,action:'Verify the original context before sharing.'};
+  if(prov==='credential') return {eyebrow:E,level:'verified',badge:'Origin on record',
+    line:'It carries a Content Credential — a real record of how it was made. Most images carry none.',action:'Read the credential below; for legal-grade proof use a full verifier.'};
+  return {eyebrow:E,level:'scrutinize',badge:'Unverified',
+    line:'No provenance survived, and no fact-check is on record'+(reach==='stock'?'; it appears on stock-image sites':'')+`${places}. It could be real, AI, or real media with a false caption.`,action:'Find the original source and check the caption matches. Genuinely your call.'};
 }
 
 let lastFile=null, lastHash=null;
@@ -429,7 +459,7 @@ async function analyze(file){
     : {ic:'caution',name:'Camera & metadata',state:['caution','Stripped'],read:'No camera, timestamp, or GPS — the metadata is stripped. Normal for screenshots, social re-uploads, and most AI images.'+(sw?` (Editor trace: “${sw}”.)`:'')+' Describes handling, not whether the content is true.',data:'Metadata stripped'+(sw?'\nEditor: '+sw:'')});
 
   renderRows(F,hash,serverOn);
-  if(serverOn) publishToServer(file,hash,F,readObj).catch(()=>{});
+  if(serverOn) publishToServer(file,hash,F,readObj,{c2paAI:scan.c2paAI,aiName:scan.aiName,c2pa:scan.c2pa,hasCamera:!!(cam||when||exif.__gps)}).catch(()=>{});
 }
 
 function renderRows(F,hash,serverOn){
@@ -476,9 +506,11 @@ function setWebMeter(on,stat){
 }
 
 /* talks to the Trace server's own address; upgrades rows + share link on success */
-async function publishToServer(file,hash,localFindings,readObj){
+async function publishToServer(file,hash,localFindings,readObj,sig){
+  sig=sig||{};
+  const prov = sig.c2paAI?'ai-cred' : sig.aiName?'ai-marker' : sig.c2pa?'credential' : sig.hasCamera?'camera' : 'stripped';
   const base=apiBase(); if(!base) return;
-  const fd=new FormData(); fd.append('image',file); fd.append('sha256',hash||''); fd.append('findings',JSON.stringify(localFindings)); fd.append('read',JSON.stringify(readObj||null));
+  const fd=new FormData(); fd.append('image',file); fd.append('sha256',hash||''); fd.append('findings',JSON.stringify(localFindings)); fd.append('read',JSON.stringify(readObj||null)); fd.append('prov',prov);
   let j;
   try{ const r=await fetch(base+'/api/publish',{method:'POST',body:fd}); j=await r.json(); }
   catch(e){ return; } // e.g. preview sandbox with no server → leave honest placeholders
@@ -489,28 +521,36 @@ async function publishToServer(file,hash,localFindings,readObj){
   $('#scUrl').textContent=link.replace(/^https?:\/\//,'');
 
   const rev=j.reverse||{};
+  let reachFlag=null, count=0;
   if(rev.connected){
+    count=rev.count||0;
     const doms=(rev.domains||[]).slice(0,4).join(', ');
     const e=rev.earliest;
     const interp=interpretDomains(rev.domains);
-    setRow('r-reverse',{ic: interp&&interp.flag==='ai'?'ai':'signal',state:['signal',(rev.count||0)>0?'Found':'Checked'],
+    reachFlag = interp ? interp.flag : null;
+    setRow('r-reverse',{ic: reachFlag==='ai'?'ai':'signal',state:['signal',count>0?'Found':'Checked'],
       read:'Where this image appears across the web.'+(interp?' '+interp.text:''),
-      data:`Found across ${rev.count||0}+ place(s).`+(doms?`\nAppears on: ${doms}${(rev.count||0)>4?' …and more':''}.`:'')+(e?`\nEarliest dated copy: ${e.source||''} ${e.date||''}`:'')});
-    setWebMeter(Math.min(3,(rev.count?2:1)),'Checked');
+      data:`Found across ${count}+ place(s).`+(doms?`\nAppears on: ${doms}${count>4?' …and more':''}.`:'')+(e?`\nEarliest dated copy: ${e.source||''} ${e.date||''}`:'')});
+    setWebMeter(Math.min(3,(count?2:1)),'Checked');
   } else {
     setRow('r-reverse',{ic:'srv',state:['srv','Add key'],read:'Server is live, but the reverse-search key isn\'t set yet (Phase 2).',data: rev.note||'Set SERPAPI_KEY to enable.'});
     setWebMeter(0,'Key not set');
   }
   const fc=j.fact||{};
+  let debunked=false;
   if(fc.connected && (fc.claims||[]).length){
+    debunked=true;
     const txt=fc.claims.map(c=>`${c.publisher||''}: ${c.rating||''}`).join(' · ');
     setRow('r-fact',{ic:'caution',state:['caution','Matches'],read:'Fact-checkers have addressed claims tied to this image.',data:txt});
-    // a published debunk is the strongest signal we have → escalate the top read
-    renderRead({level:'debunk',badge:'Fact-check debunk on record',line:'Fact-checkers have published a debunk tied to this image. '+txt,action:'Read the fact-check before sharing — this has already been flagged.'});
   } else if(fc.connected){
     setRow('r-fact',{ic:'present',state:['present','No debunk'],read:'No published fact-check matched this image. That means no debunk is on record — not that it’s verified true.',data:'No fact-check matches found.'});
   } else {
     setRow('r-fact',{ic:'srv',state:['srv','Add key'],read:'Server is live, but the fact-check key isn\'t set yet (Phase 2).',data: fc.note||'Set FACTCHECK_KEY to enable.'});
+  }
+
+  // ── CONSENSUS: now that the web streams are in, weigh all three into the top read ──
+  if(rev.connected || debunked){
+    renderRead(computeConsensus(prov, reachFlag, debunked, count));
   }
 }
 
