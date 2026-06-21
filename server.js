@@ -176,17 +176,27 @@ function claimImpliesRecent(text){
   if(new RegExp('\\b('+now+'|'+(now-1)+')\\b').test(t)) return true;
   return false;
 }
+function looksLikeClaim(s){
+  s=(s||'').trim();
+  if(s.length<8) return false;
+  if(/[<>]|\/>|="|http-equiv|viewport|initial-scale|device-width|preconnect|stylesheet|user-scalable|charset=|rel=["']/i.test(s)) return false;
+  const words=s.split(/\s+/).filter(Boolean);
+  if(words.length<3) return false;
+  const letters=(s.match(/[a-zA-Z]/g)||[]).length;
+  if(letters < s.length*0.5) return false;
+  return true;
+}
 function extractClaim(html, host){
   const meta=(props)=>{
     for(const p of props){
       let m = html.match(new RegExp('<meta[^>]+(?:property|name)=["\']'+p+'["\'][^>]*?content=(["\'])([\\s\\S]*?)\\1','i'))
            || html.match(new RegExp('<meta[^>]+content=(["\'])([\\s\\S]*?)\\1[^>]*?(?:property|name)=["\']'+p+'["\']','i'));
-      if(m && m[2]) return decodeEntities(m[2]);
+      if(m && m[2]){ const v=decodeEntities(m[2]); if(looksLikeClaim(v)) return v; }
     }
     return '';
   };
-  const titleTag=(html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)||[])[1];
-  const title=meta(['og:title','twitter:title']) || decodeEntities(titleTag||'');
+  let title=meta(['og:title','twitter:title']);
+  if(!title){ const tt=decodeEntities((html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)||[])[1]||''); if(looksLikeClaim(tt)) title=tt; }
   const description=meta(['og:description','twitter:description','description']);
   if(!title && !description) return null;
   return { title: clip(title,200), description: clip(description,300), source: host };
@@ -304,7 +314,7 @@ app.get('/check/:id', (req, res) => {
 
   const esc = t => (t == null ? '' : String(t)).replace(/[<>&"]/g, c => ({ '<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;' }[c]));
   // render stored file-checks, but skip the two cross-check placeholders — we paint authoritative versions below
-  const skip = new Set(['Where it appears', 'Fact-check record']);
+  const skip = new Set(['Where it appears', 'Fact-check record', 'The claim']);
   const rows = (r.findings || []).filter(f => !f.section && !skip.has(f.name)).map(f =>
     `<div class="row"><div><div class="n">${esc(f.name)}</div><div class="rd">${esc(f.read)}</div></div><span class="st st-${f.ic}">${esc((f.state||[])[1]||'')}</span></div>`
   ).join('');
