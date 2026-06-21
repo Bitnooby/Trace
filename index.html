@@ -26,8 +26,8 @@
 
   header.mast{padding:40px 0 22px}
   .mark{display:flex;align-items:center;gap:11px}
-  .glyph{width:32px;height:32px;flex:0 0 auto;border-radius:8px;background:linear-gradient(150deg,var(--signal),var(--signal-bright));position:relative;box-shadow:0 3px 10px rgba(11,110,110,.3)}
-  .glyph::before{content:"";position:absolute;inset:0;border-radius:8px;background:linear-gradient(transparent 45%,rgba(255,255,255,.9) 47%,rgba(255,255,255,.9) 53%,transparent 55%),radial-gradient(circle at 50% 50%,rgba(255,255,255,.95) 2px,transparent 2.7px)}
+  .glyph{width:32px;height:32px;flex:0 0 auto;border-radius:8px;background:linear-gradient(150deg,var(--signal),var(--signal-bright));box-shadow:0 3px 10px rgba(11,110,110,.3);display:flex;align-items:center;justify-content:center}
+  .glyph svg{width:22px;height:22px}
   .wordmark{font-family:var(--display);font-weight:700;font-size:21px;letter-spacing:.17em;text-transform:uppercase}
   .badge{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--faint);border:1px solid var(--line);border-radius:20px;padding:4px 10px}
   .tagline{margin:22px 0 0;font-family:var(--display);font-weight:600;font-size:clamp(28px,5.4vw,42px);line-height:1.08;letter-spacing:-.02em}
@@ -159,7 +159,11 @@
 
   <header class="mast">
     <div class="mark">
-      <div class="glyph" aria-hidden="true"></div>
+      <div class="glyph" aria-hidden="true"><svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <g stroke="#fff" stroke-width="7" stroke-linecap="round"><line x1="32" y1="34" x2="50" y2="52"/><line x1="50" y1="52" x2="70" y2="36"/><line x1="50" y1="52" x2="52" y2="78"/></g>
+        <circle cx="32" cy="34" r="7.5" fill="#fff"/><circle cx="70" cy="36" r="7.5" fill="#fff"/><circle cx="52" cy="78" r="7.5" fill="#fff"/>
+        <circle cx="50" cy="52" r="13" fill="none" stroke="#fff" stroke-width="7"/><circle cx="50" cy="52" r="4.5" fill="#fff"/>
+      </svg></div>
       <span class="wordmark">Trace</span>
       <span class="badge" id="modeBadge">prototype</span>
     </div>
@@ -581,6 +585,14 @@ $('#copyBtn').addEventListener('click',()=>{const t=$('#shareUrl').textContent;n
 
 /* badge reflects mode */
 (function(){ const b=$('#modeBadge'); if(apiBase()&&!location.protocol.startsWith('file')) { /* served */ } })();
+
+/* Browser-extension entry point: opened as ?check=<image url> → run the report automatically */
+(function(){
+  try{
+    const c=new URLSearchParams(location.search).get('check');
+    if(c){ const i=$('#linkInput'); if(i){ i.value=c; checkLink(); } }
+  }catch(_){}
+})();
 </script>
 </body>
 </html>

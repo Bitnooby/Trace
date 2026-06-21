@@ -257,7 +257,8 @@ function page(title, body, base, og) {
     *{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font-family:Inter,system-ui,sans-serif;line-height:1.5}
     .w{max-width:560px;margin:0 auto;padding:30px 20px 60px}
     .brand{display:flex;align-items:center;gap:9px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;font-size:15px;color:var(--signal)}
-    .g{width:22px;height:22px;border-radius:6px;background:linear-gradient(150deg,#0B6E6E,#13A8A8)}
+    .g{width:22px;height:22px;border-radius:6px;background:linear-gradient(150deg,#0B6E6E,#13A8A8);display:inline-flex;align-items:center;justify-content:center;vertical-align:middle}
+    .g svg{width:15px;height:15px}
     .hero{width:100%;border-radius:14px;margin:18px 0;border:1px solid var(--line)}
     .rb{border-radius:13px;padding:16px 18px;margin:14px 0 14px}
     .rb-b{font-weight:700;font-size:18px;display:flex;align-items:center;gap:9px}
@@ -277,7 +278,7 @@ function page(title, body, base, og) {
     .st-ai{background:#EDEBFA;color:var(--ai)}.st-srv{background:#EDF0FA;color:var(--srv)}
     .cta{display:block;text-align:center;margin-top:18px;background:var(--ink);color:#fff;text-decoration:none;font-weight:600;padding:14px;border-radius:11px}
   </style></head><body><div class="w">
-    <div class="brand"><span class="g"></span> Trace</div>${body}
+    <div class="brand"><span class="g"><svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg"><g stroke="#fff" stroke-width="8" stroke-linecap="round"><line x1="32" y1="34" x2="50" y2="52"/><line x1="50" y1="52" x2="70" y2="36"/><line x1="50" y1="52" x2="52" y2="78"/></g><circle cx="32" cy="34" r="8" fill="#fff"/><circle cx="70" cy="36" r="8" fill="#fff"/><circle cx="52" cy="78" r="8" fill="#fff"/><circle cx="50" cy="52" r="9.5" fill="#fff"/></svg></span> Trace</div>${body}
   </div></body></html>`;
 }
 
