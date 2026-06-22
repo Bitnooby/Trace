@@ -85,10 +85,13 @@ const shortId  = sha => (sha ? sha.slice(0, 10) : crypto.randomBytes(5).toString
    uploads (multipart) — swap this function if you use it.                      */
 async function reverseSearch(publicImageUrl) {
   if (!SERPAPI_KEY) return { connected: false, note: 'Reverse search not configured (set SERPAPI_KEY).' };
+  // an honest "we couldn't check" — NOT the same as "appears nowhere", and must never feed a real signal to consensus
+  const DEGRADED = { connected: true, degraded: true, note: 'The web-appearance check couldn’t run for this image (search quota or service hiccup).' };
   try {
     const u = `https://serpapi.com/search.json?engine=google_lens&url=${encodeURIComponent(publicImageUrl)}&api_key=${SERPAPI_KEY}`;
     const r = await fetch(u);
     const j = await r.json();
+    if (!r.ok || j.error) return DEGRADED;   // quota exhausted, bad key, or any SerpAPI error JSON
     const matches = (j.visual_matches || []).slice(0, 8).map(m => ({
       title: m.title, source: m.source, link: m.link, date: m.date || null
     }));
@@ -104,7 +107,7 @@ async function reverseSearch(publicImageUrl) {
       matches
     };
   } catch (e) {
-    return { connected: true, error: 'Reverse search request failed: ' + e.message };
+    return DEGRADED;
   }
 }
 
@@ -376,12 +379,16 @@ app.get('/check/:id', async (req, res) => {
     }
   }
   if (r.reverse?.connected) {
-    const e = r.reverse.earliest;
-    const doms = (r.reverse.domains || []).slice(0, 4).join(', ');
-    const interp = interpretDomains(r.reverse.domains);
-    const vintage = vintageYear(e);
-    const st = interp.examined ? 'st-caution' : (interp.flag === 'ai' ? 'st-ai' : 'st-signal');
-    web += `<div class="row"><div><div class="n">Where it appears</div><div class="rd">Where this image appears across the web.${interp.found?' '+esc(interp.text):''}<br><span class="dim">${r.reverse.count?`Seen across ${spreadPhrase(r.reverse.count)} online.`:'Not found on other public sites we could check.'}${doms?` Sources include: ${esc(doms)}${(r.reverse.count||0)>4?' …and more':''}.`:''}${e?` Earliest dated copy: ${esc(e.source||'')} (${esc(e.date||'')})${vintage?` · online since ${vintage}`:''}.`:''}</span></div></div><span class="st ${st}">${(r.reverse.count||0)>0?'Found':'Checked'}</span></div>`;
+    if (r.reverse.degraded) {
+      web += `<div class="row"><div><div class="n">Where it appears</div><div class="rd">${esc(r.reverse.note||'The web-appearance check couldn’t run for this image.')} That evidence is <strong>missing</strong> for this report — which is not the same as the image appearing nowhere.</div></div><span class="st st-present">Unavailable</span></div>`;
+    } else {
+      const e = r.reverse.earliest;
+      const doms = (r.reverse.domains || []).slice(0, 4).join(', ');
+      const interp = interpretDomains(r.reverse.domains);
+      const vintage = vintageYear(e);
+      const st = interp.examined ? 'st-caution' : (interp.flag === 'ai' ? 'st-ai' : 'st-signal');
+      web += `<div class="row"><div><div class="n">Where it appears</div><div class="rd">Where this image appears across the web.${interp.found?' '+esc(interp.text):''}<br><span class="dim">${r.reverse.count?`Seen across ${spreadPhrase(r.reverse.count)} online.`:'Not found on other public sites we could check.'}${doms?` Sources include: ${esc(doms)}${(r.reverse.count||0)>4?' …and more':''}.`:''}${e?` Earliest dated copy: ${esc(e.source||'')} (${esc(e.date||'')})${vintage?` · online since ${vintage}`:''}.`:''}</span></div></div><span class="st ${st}">${(r.reverse.count||0)>0?'Found':'Checked'}</span></div>`;
+    }
   }
   if (r.fact?.connected) {
     const claims = r.fact.claims || [];
@@ -396,13 +403,14 @@ app.get('/check/:id', async (req, res) => {
   // CONSENSUS — weigh provenance + where-it-appears + fact-check into one honest read
   const provFromLevel = { ai:'ai-marker', verified:'credential', photo:'camera', scrutinize:'stripped' };
   const prov = r.prov || provFromLevel[(r.read||{}).level] || 'stripped';
-  const cInterp = r.reverse?.connected ? interpretDomains(r.reverse.domains) : { flag:null, examined:false };
+  const reachOK = !!(r.reverse?.connected && !r.reverse.degraded);
+  const cInterp = reachOK ? interpretDomains(r.reverse.domains) : { flag:null, examined:false };
   const reachFlag = cInterp.flag || null;
   const examined = !!cInterp.examined;
-  const vintage = r.reverse?.connected ? vintageYear(r.reverse.earliest) : null;
+  const vintage = reachOK ? vintageYear(r.reverse.earliest) : null;
   const debunked = !!(r.fact?.connected && (r.fact.claims || []).length);
   const mismatchYear = (r.claim && r.claim.mismatch && r.claim.mismatch.is) ? r.claim.mismatch.year : null;
-  const rd = computeConsensus(prov, reachFlag, debunked, r.reverse?.count || 0, examined, vintage, mismatchYear);
+  const rd = computeConsensus(prov, reachFlag, debunked, reachOK ? (r.reverse.count || 0) : 0, examined, vintage, mismatchYear);
   const rbCls = { ai: 'rb-red', debunk: 'rb-red', verified: 'rb-green', photo: 'rb-blue', scrutinize: 'rb-amber' }[rd.level] || 'rb-amber';
   const banner = `<div class="rb ${rbCls}"><div class="rb-eye">${esc(rd.eyebrow||'')}</div><div class="rb-b">${esc(rd.badge)}</div><div class="rb-l">${esc(rd.line)}</div></div>`;
 
@@ -451,7 +459,7 @@ function page(title, body, base, og) {
     .note{background:#E6F4F4;border:1px solid #C5E5E5;border-radius:11px;padding:13px 15px;font-size:14px;color:#274545;margin:6px 0 16px}
     .card{background:#fff;border:1px solid var(--line);border-radius:14px;overflow:hidden}
     .row{display:flex;justify-content:space-between;gap:14px;padding:14px 16px;border-top:1px solid var(--line);align-items:start}
-    .row:first-child{border-top:none}.n{font-weight:600;font-size:14.5px}.rd{color:var(--g);font-size:13px;margin-top:3px}
+    .row:first-child{border-top:none}.n{font-weight:600;font-size:14.5px}.rd{color:var(--g);font-size:13px;margin-top:3px;overflow-wrap:anywhere}
     .st{font-family:ui-monospace,monospace;font-size:10.5px;font-weight:600;text-transform:uppercase;padding:4px 9px;border-radius:20px;white-space:nowrap;height:fit-content}
     .st-present{background:#E6F3EC;color:var(--ok)}.st-absent{background:var(--paper);color:#8A95A4;border:1px solid var(--line)}
     .st-caution{background:#FAF0DD;color:var(--warn)}.st-signal{background:#E6F4F4;color:var(--signal)}
@@ -460,6 +468,13 @@ function page(title, body, base, og) {
     .sec:first-child{border-top:none}
     .dim{color:#8A95A4;font-size:12px}
     .cta{display:block;text-align:center;margin-top:18px;background:var(--ink);color:#fff;text-decoration:none;font-weight:600;padding:14px;border-radius:11px}
+    @media (max-width:560px){
+      .w{padding:22px 15px 46px}
+      .hero{margin:14px 0}
+      .rb{padding:14px 15px}.rb-b{font-size:16.5px}.rb-l{font-size:13px}
+      .row{padding:13px 13px;gap:11px}.n{font-size:14px}.rd{font-size:12.5px}
+      .st{font-size:10px;padding:4px 8px}
+    }
   </style></head><body><div class="w">
     <div class="brand"><span class="g"><svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg"><g stroke="#fff" stroke-width="8" stroke-linecap="round"><line x1="32" y1="34" x2="50" y2="52"/><line x1="50" y1="52" x2="70" y2="36"/><line x1="50" y1="52" x2="52" y2="78"/></g><circle cx="32" cy="34" r="8" fill="#fff"/><circle cx="70" cy="36" r="8" fill="#fff"/><circle cx="52" cy="78" r="8" fill="#fff"/><circle cx="50" cy="52" r="9.5" fill="#fff"/></svg></span> Relity</div>${body}
   </div></body></html>`;

@@ -123,7 +123,7 @@
   .ic-ai{background:var(--ai-wash);color:var(--ai)} .ic-srv{background:var(--srv-wash);color:var(--srv)}
   .row-main{min-width:0}
   .row-name{font-family:var(--display);font-weight:600;font-size:15px}
-  .row-read{color:var(--graphite);font-size:13.5px;margin-top:4px;line-height:1.5}
+  .row-read{color:var(--graphite);font-size:13.5px;margin-top:4px;line-height:1.5;overflow-wrap:anywhere}
   .row-data{font-family:var(--mono);font-size:12px;color:var(--ink);background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:7px 10px;margin-top:9px;word-break:break-word;white-space:pre-wrap;line-height:1.5}
   .row-side{display:flex;align-items:flex-end}
   .state{font-family:var(--mono);font-size:10.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;padding:4px 9px;border-radius:20px;white-space:nowrap}
@@ -152,9 +152,12 @@
   .disclaim code{font-family:var(--mono);background:#fff;border:1px solid var(--line);border-radius:5px;padding:1px 6px;color:var(--graphite)}
 
   @media (max-width:580px){
-    .doss-head{flex-direction:column}.preview{width:100%;height:200px}
+    .big{margin-top:32px}
+    .say{font-size:16px}
+    .dropzone{padding:34px 18px}
+    .doss-head{flex-direction:column;padding:18px}.preview{width:100%;height:200px}
     .meters{grid-template-columns:repeat(2,1fr)}
-    .row{grid-template-columns:24px 1fr;gap:11px}.row-side{grid-column:2;justify-content:flex-start}
+    .row{grid-template-columns:24px 1fr;gap:11px;padding:14px 18px}.row-side{grid-column:2;justify-content:flex-start}
   }
   @media (prefers-reduced-motion:reduce){.scanline,#dossier.show{animation:none}.row,.section-label{opacity:1;transform:none}}
 </style>
@@ -555,7 +558,11 @@ async function publishToServer(file,hash,localFindings,readObj,sig,claim){
 
   const rev=j.reverse||{};
   let reachFlag=null, count=0, examined=false, vintage=null;
-  if(rev.connected){
+  if(rev.connected && rev.degraded){
+    // honest "couldn't check" — leave reachFlag/count neutral so consensus gets no false signal
+    setRow('r-reverse',{ic:'srv',state:['srv','Unavailable'],read: rev.note||'The web-appearance check couldn’t run for this image.',data:'That evidence is missing for this report — not a sign the image appears nowhere.'});
+    setWebMeter(0,'Unavailable');
+  } else if(rev.connected){
     count=rev.count||0;
     const doms=(rev.domains||[]).slice(0,4).join(', ');
     const e=rev.earliest;
