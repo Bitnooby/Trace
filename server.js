@@ -330,11 +330,13 @@ function vintageYear(earliest){
   const y=+m[0], now=new Date().getFullYear();
   return (y>=1990&&y<=now-1)?y:null;
 }
+// the raw Lens count is page-capped (~50-60), so report spread qualitatively, never as a precise (misleading) number
+function spreadPhrase(n){ if(!n) return ''; if(n<=3) return 'a few places'; if(n<=15) return 'several places'; return 'many places'; }
 
 // CONSENSUS — weigh all three evidence streams into one honest read (mirrors the client)
 function computeConsensus(prov, reach, debunked, count, examined, vintage, mismatchYear){
   const E='Consensus — the evidence, weighed';
-  const places = count ? ` (seen on ${count}+ sites)` : '';
+  const places = count ? ` (seen across ${spreadPhrase(count)})` : '';
   const vint = vintage ? ` It’s been online since ${vintage} — be wary of any caption claiming it’s recent or breaking.` : '';
   const r=(level,badge,line)=>({eyebrow:E,level,badge,line:(level==='debunk'||level==='ai')?line:line+vint});
   if(debunked) return r('debunk','Debunked on record',`Fact-checkers have already debunked this image — the strongest signal there is. Treat it as false${places}.`);
@@ -379,7 +381,7 @@ app.get('/check/:id', async (req, res) => {
     const interp = interpretDomains(r.reverse.domains);
     const vintage = vintageYear(e);
     const st = interp.examined ? 'st-caution' : (interp.flag === 'ai' ? 'st-ai' : 'st-signal');
-    web += `<div class="row"><div><div class="n">Where it appears</div><div class="rd">Where this image appears across the web.${interp.found?' '+esc(interp.text):''}<br><span class="dim">Found across ${r.reverse.count||0}+ place(s).${doms?` Appears on: ${esc(doms)}${(r.reverse.count||0)>4?' …and more':''}.`:''}${e?` Earliest dated copy: ${esc(e.source||'')} (${esc(e.date||'')})${vintage?` · online since ${vintage}`:''}.`:''}</span></div></div><span class="st ${st}">${(r.reverse.count||0)>0?'Found':'Checked'}</span></div>`;
+    web += `<div class="row"><div><div class="n">Where it appears</div><div class="rd">Where this image appears across the web.${interp.found?' '+esc(interp.text):''}<br><span class="dim">${r.reverse.count?`Seen across ${spreadPhrase(r.reverse.count)} online.`:'Not found on other public sites we could check.'}${doms?` Sources include: ${esc(doms)}${(r.reverse.count||0)>4?' …and more':''}.`:''}${e?` Earliest dated copy: ${esc(e.source||'')} (${esc(e.date||'')})${vintage?` · online since ${vintage}`:''}.`:''}</span></div></div><span class="st ${st}">${(r.reverse.count||0)>0?'Found':'Checked'}</span></div>`;
   }
   if (r.fact?.connected) {
     const claims = r.fact.claims || [];

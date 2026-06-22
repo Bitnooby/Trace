@@ -386,7 +386,7 @@ function renderRead(rd){
    reach: 'ai' | 'news' | 'stock' | null      debunked: bool      count: # of places */
 function computeConsensus(prov, reach, debunked, count, examined, vintage, mismatchYear){
   const E='Consensus — the evidence, weighed';
-  const places = count ? ` (seen on ${count}+ sites)` : '';
+  const places = count ? ` (seen across ${spreadPhrase(count)})` : '';
   const vint = vintage ? ` It’s been online since ${vintage} — be wary of any caption claiming it’s recent or breaking.` : '';
   const r=(level,badge,line,action)=>({eyebrow:E,level,badge,action,line:(level==='debunk'||level==='ai')?line:line+vint});
   if(debunked) return r('debunk','Debunked on record',`Fact-checkers have already debunked this image — the strongest signal there is. Treat it as false${places}.`,'Don’t share it. Read the fact-check below.');
@@ -522,6 +522,8 @@ function vintageYear(earliest){
   const y=+m[0], now=new Date().getFullYear();
   return (y>=1990&&y<=now-1)?y:null;
 }
+// the raw Lens count is page-capped (~50-60), so report spread qualitatively, never as a precise (misleading) number
+function spreadPhrase(n){ if(!n) return ''; if(n<=3) return 'a few places'; if(n<=15) return 'several places'; return 'many places'; }
 function setRow(id,{ic,state,read,data}){
   const el=document.getElementById(id); if(!el) return;
   const[cls,label]=state;
@@ -561,7 +563,7 @@ async function publishToServer(file,hash,localFindings,readObj,sig,claim){
     reachFlag = interp.flag; examined = interp.examined; vintage = vintageYear(e);
     setRow('r-reverse',{ic: examined?'caution':(reachFlag==='ai'?'ai':'signal'),state:['signal',count>0?'Found':'Checked'],
       read:'Where this image appears across the web.'+(interp.found?' '+interp.text:''),
-      data:`Found across ${count}+ place(s).`+(doms?`\nAppears on: ${doms}${count>4?' …and more':''}.`:'')+(e?`\nEarliest dated copy: ${e.source||''} ${e.date||''}`+(vintage?`  ·  online since ${vintage}`:''):'')});
+      data:(count?`Seen across ${spreadPhrase(count)} online.`:`Not found on other public sites we could check.`)+(doms?`\nSources include: ${doms}${count>4?' …and more':''}.`:'')+(e?`\nEarliest dated copy: ${e.source||''} ${e.date||''}`+(vintage?`  ·  online since ${vintage}`:''):'')});
     setWebMeter(Math.min(3,(count?2:1)),'Checked');
   } else {
     setRow('r-reverse',{ic:'srv',state:['srv','Add key'],read:'Server is live, but the reverse-search key isn\'t set yet (Phase 2).',data: rev.note||'Set SERPAPI_KEY to enable.'});
