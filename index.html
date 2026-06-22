@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Trace — Evidence, not verdicts</title>
+<title>Relity — Evidence, not verdicts</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;450;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
@@ -169,14 +169,14 @@
         <circle cx="32" cy="34" r="7.5" fill="#fff"/><circle cx="70" cy="36" r="7.5" fill="#fff"/><circle cx="52" cy="78" r="7.5" fill="#fff"/>
         <circle cx="50" cy="52" r="13" fill="none" stroke="#fff" stroke-width="7"/><circle cx="50" cy="52" r="4.5" fill="#fff"/>
       </svg></span>
-      <span class="wordmark">Trace</span>
+      <span class="wordmark">Relity</span>
       <span class="badge" id="modeBadge">beta</span>
     </a>
   </header>
 
   <section class="hero" id="submitPanel">
     <h1 class="big">Is it <em>real</em>?</h1>
-    <p class="say">Drop an image. Trace shows the evidence — you make the call.</p>
+    <p class="say">Drop an image. Relity shows the evidence — you make the call.</p>
 
     <div class="dropzone" id="dropzone" tabindex="0" role="button" aria-label="Drop or browse for an image">
       <svg class="dz-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2.5"/><circle cx="8.5" cy="8.5" r="1.6"/><path d="m21 15-4.5-4.5L5 21"/></svg>
@@ -219,7 +219,7 @@
 
     <div class="ledger">
       <div class="ledger-top">
-        <span class="ledger-title">What Trace could establish</span>
+        <span class="ledger-title">What Relity could establish</span>
         <span class="ledger-note">More signal = more to verify against, not proof of truth</span>
       </div>
       <div class="meters" id="meters"></div>
@@ -239,7 +239,7 @@
           <div class="sc-top">
             <img class="sc-thumb" id="scThumb" alt="" />
             <div class="sc-body">
-              <div class="sc-mark"><span class="sc-mini"></span> Trace · Evidence report</div>
+              <div class="sc-mark"><span class="sc-mini"></span> Relity · Evidence report</div>
               <div class="sc-title" id="scTitle">Evidence report</div>
               <div class="sc-desc" id="scDesc">Provenance, camera origin & edits traced</div>
             </div>
@@ -444,7 +444,7 @@ async function analyze(file, claim){
 
   // ── PRIMARY: what the web shows (reverse search + fact-check lead) ──
   const F=[{section:'What the web shows'}];
-  if(claim && (claim.title||claim.description)) F.push({id:'r-claim',ic:'signal',name:'The claim',state:['srv', serverOn?'Checking…':'Recorded'],read:'The headline or caption wrapped around this image — where misinformation usually hides. Trace weighs it against the fact-check record and the image’s age, but can’t judge whether the photo truly depicts it.',data:'“'+(claim.title||claim.description)+'”'+(claim.source?'  — '+claim.source:'')});
+  if(claim && (claim.title||claim.description)) F.push({id:'r-claim',ic:'signal',name:'The claim',state:['srv', serverOn?'Checking…':'Recorded'],read:'The headline or caption wrapped around this image — where misinformation usually hides. Relity weighs it against the fact-check record and the image’s age, but can’t judge whether the photo truly depicts it.',data:'“'+(claim.title||claim.description)+'”'+(claim.source?'  — '+claim.source:'')});
   F.push({id:'r-reverse',ic:'srv',name:'Where it appears',state:['srv', serverOn?'Checking…':'Local only'],read:'Where this image shows up across the web — the best signal for catching recycled or miscaptioned images, and a hint at its origin.',data: serverOn?'Querying the connected server…':'Open this on the deployed server to run web checks.'});
   F.push({id:'r-fact',ic:'srv',name:'Fact-check record',state:['srv', serverOn?'Checking…':'Local only'],read:'Whether fact-checkers have already debunked this exact image (matched by fingerprint + found captions).',data: serverOn?'Querying the connected server…':'Open this on the deployed server to run web checks.'});
 
@@ -588,7 +588,7 @@ async function publishToServer(file,hash,localFindings,readObj,sig,claim){
       mismatchYear=mm.year;
       setRow('r-claim',{ic:'caution',state:['caution','Mismatch'],read:`This claim presents the image as current, but the image has been online since ${mm.year} — a classic recontextualization (old image, new caption). Check what it originally showed.`,data:'“'+(cl.title||cl.description)+'”'+(cl.source?'  — '+cl.source:'')});
     } else {
-      setRow('r-claim',{ic:'present',state:['present','Recorded'],read:'This is the claim being made with the image. Trace checks it against the fact-check record and the image’s age — but whether the photo truly depicts it is your call.',data:'“'+(cl.title||cl.description)+'”'+(cl.source?'  — '+cl.source:'')});
+      setRow('r-claim',{ic:'present',state:['present','Recorded'],read:'This is the claim being made with the image. Relity checks it against the fact-check record and the image’s age — but whether the photo truly depicts it is your call.',data:'“'+(cl.title||cl.description)+'”'+(cl.source?'  — '+cl.source:'')});
     }
   }
 

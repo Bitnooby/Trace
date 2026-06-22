@@ -14,10 +14,14 @@
    Both keys are optional — without them, those checks return
    "not configured" instead of fake results. Nothing is fabricated.
 
-   PROTOTYPE NOTES (swap before real traffic):
-     • Results + images are kept in memory (Map) and reset on restart.
-       Swap `store` / `imgStore` for Redis or Postgres + object storage.
-     • Add rate limiting and a size cap before exposing publicly.
+   STORAGE:
+     • Set UPSTASH_REDIS_REST_URL + UPSTASH_REDIS_REST_TOKEN to keep shared
+       reports alive across deploys (90-day TTL). Without them, an in-memory
+       fallback is used and reports reset on restart.
+     • Large images (>680KB) stay in memory even with Redis on; the report
+       text always persists. Add object storage later for full image durability.
+     • GET /healthz is a lightweight keep-warm target for an uptime pinger.
+     • Add rate limiting before opening the paid/AI tier to the public.
    ============================================================ */
 
 const express = require('express');
@@ -29,13 +33,50 @@ app.set('trust proxy', true);                  // Render sits behind a proxy →
 const PORT  = process.env.PORT || 8080;
 const SERPAPI_KEY   = process.env.SERPAPI_KEY   || '';   // serpapi.com — Google Lens engine
 const FACTCHECK_KEY = process.env.FACTCHECK_KEY || '';   // Google Fact Check Tools API
+const REDIS_URL     = process.env.UPSTASH_REDIS_REST_URL   || '';  // Upstash Redis (REST) — keeps shared reports alive across deploys
+const REDIS_TOKEN   = process.env.UPSTASH_REDIS_REST_TOKEN || '';
+const redisOn = !!(REDIS_URL && REDIS_TOKEN);
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 12 * 1024 * 1024 } });
 app.use(express.static(__dirname));            // serves index.html
 app.use(express.json({ limit: '2mb' }));
 
-const store    = new Map();   // id -> report     (swap for a DB)
-const imgStore = new Map();   // id -> {buf,mime} (swap for object storage)
+/* ---------- persistence: Upstash Redis when configured, else in-memory ----------
+   Shared reports (and small images) survive redeploys once UPSTASH_* env vars are set.
+   Without them Trace still runs, but resets on restart (fine for local dev).
+   The in-memory Maps also act as a fast cache in front of Redis.                  */
+const memReport = new Map();          // id -> report
+const memImg    = new Map();          // id -> {buf,mime}
+const TTL = 60 * 60 * 24 * 90;        // keep shared reports for 90 days
+const IMG_PERSIST_MAX = 680 * 1024;   // only push images this small to Redis (REST request cap); larger ones stay in-memory
+
+async function redisCmd(args) {
+  const r = await fetch(REDIS_URL, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${REDIS_TOKEN}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(args)
+  });
+  if (!r.ok) throw new Error('redis ' + r.status);
+  return (await r.json()).result;
+}
+async function putReport(id, report) {
+  memReport.set(id, report);
+  if (redisOn) { try { await redisCmd(['SET', 'trace:r:' + id, JSON.stringify(report), 'EX', TTL]); } catch (e) { console.error('redis putReport:', e.message); } }
+}
+async function getReport(id) {
+  if (memReport.has(id)) return memReport.get(id);
+  if (redisOn) { try { const v = await redisCmd(['GET', 'trace:r:' + id]); if (v) { const r = JSON.parse(v); memReport.set(id, r); return r; } } catch (e) { console.error('redis getReport:', e.message); } }
+  return null;
+}
+async function putImage(id, buf, mime) {
+  memImg.set(id, { buf, mime });
+  if (redisOn && buf.length <= IMG_PERSIST_MAX) { try { await redisCmd(['SET', 'trace:i:' + id, JSON.stringify({ mime, b64: buf.toString('base64') }), 'EX', TTL]); } catch (e) { console.error('redis putImage:', e.message); } }
+}
+async function getImage(id) {
+  if (memImg.has(id)) return memImg.get(id);
+  if (redisOn) { try { const v = await redisCmd(['GET', 'trace:i:' + id]); if (v) { const o = JSON.parse(v); const img = { buf: Buffer.from(o.b64, 'base64'), mime: o.mime }; memImg.set(id, img); return img; } } catch (e) { console.error('redis getImage:', e.message); } }
+  return null;
+}
 const shortId  = sha => (sha ? sha.slice(0, 10) : crypto.randomBytes(5).toString('hex'));
 
 /* ---------- adapter 1: reverse image search (SerpAPI / Google Lens) ----------
@@ -102,7 +143,7 @@ app.post('/api/publish', upload.single('image'), async (req, res) => {
     let claim = null;
     try { claim = JSON.parse(req.body.claim || 'null'); } catch { /* ignore */ }
 
-    if (req.file) imgStore.set(id, { buf: req.file.buffer, mime: req.file.mimetype });
+    if (req.file) await putImage(id, req.file.buffer, req.file.mimetype);
 
     const base = `${req.protocol}://${req.get('host')}`;
     const publicImageUrl = req.file ? `${base}/img/${id}` : null;
@@ -123,24 +164,27 @@ app.post('/api/publish', upload.single('image'), async (req, res) => {
     }
 
     const report = { id, sha256: sha, createdAt: Date.now(), findings, read, reverse, fact, prov: (req.body.prov || null), claim: claimOut, hasImage: !!req.file };
-    store.set(id, report);
+    await putReport(id, report);
     res.json({ id, reverse, fact, claim: claimOut });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
 });
 
-app.get('/api/result/:id', (req, res) => {
-  const r = store.get(req.params.id);
+app.get('/api/result/:id', async (req, res) => {
+  const r = await getReport(req.params.id);
   if (!r) return res.status(404).json({ error: 'Not found' });
   res.json(r);
 });
 
-app.get('/img/:id', (req, res) => {
-  const i = imgStore.get(req.params.id);
+app.get('/img/:id', async (req, res) => {
+  const i = await getImage(req.params.id);
   if (!i) return res.status(404).end();
   res.set('Content-Type', i.mime || 'image/jpeg').send(i.buf);
 });
+
+// lightweight keep-warm target for an external uptime pinger (avoids the cold-start wait)
+app.get('/healthz', (req, res) => res.type('text').send('ok'));
 
 /* ---------- fetch an image from a pasted link ----------
    Handles a direct image URL, or an article/page URL (pulls its og:image).
@@ -148,7 +192,7 @@ app.get('/img/:id', (req, res) => {
    to right-click → Copy image → Ctrl+V instead.
    Guards: https/http only, no private/loopback hosts (SSRF), 8s timeout, 15MB cap. */
 const MAX_BYTES = 15 * 1024 * 1024;
-const FETCH_UA  = 'Mozilla/5.0 (compatible; TraceBot/0.1; +https://github.com/)';
+const FETCH_UA  = 'Mozilla/5.0 (compatible; RelityBot/0.1; +https://relity.ai/)';
 function hostBlocked(h) {
   h = (h || '').toLowerCase();
   if (h === 'localhost' || h.endsWith('.local') || h.endsWith('.internal')) return true;
@@ -307,10 +351,10 @@ function computeConsensus(prov, reach, debunked, count, examined, vintage, misma
   return r('scrutinize','Unverified','No provenance survived, and no fact-check is on record'+(reach==='stock'?'; it appears on stock-image sites':'')+`${places}. It could be real, AI, or real media with a false caption.`);
 }
 
-app.get('/check/:id', (req, res) => {
-  const r = store.get(req.params.id);
+app.get('/check/:id', async (req, res) => {
+  const r = await getReport(req.params.id);
   const base = `${req.protocol}://${req.get('host')}`;
-  if (!r) return res.status(404).send(page('Report not found', '<p style="color:#586273">This report has expired or never existed. In the prototype, reports live in memory and reset on restart.</p>', base, null));
+  if (!r) return res.status(404).send(page('Report not found', '<p style="color:#586273">This report link has expired or never existed. Shared reports are kept for 90 days.</p>', base, null));
 
   const esc = t => (t == null ? '' : String(t)).replace(/[<>&"]/g, c => ({ '<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;' }[c]));
   // render stored file-checks, but skip the two cross-check placeholders — we paint authoritative versions below
@@ -362,13 +406,13 @@ app.get('/check/:id', (req, res) => {
 
   const desc = (rd.badge || 'Evidence report') + ' — evidence, not a verdict.';
   const og = `
-    <meta property="og:title" content="Trace — ${esc(rd.badge||'Evidence report')}" />
+    <meta property="og:title" content="Relity — ${esc(rd.badge||'Evidence report')}" />
     <meta property="og:description" content="${esc(desc)}" />
     <meta property="og:type" content="website" />
     ${r.hasImage ? `<meta property="og:image" content="${base}/img/${r.id}" />` : ''}
     <meta name="twitter:card" content="summary_large_image" />`;
 
-  res.send(page('Trace — Evidence report', `
+  res.send(page('Relity — Evidence report', `
     ${r.hasImage ? `<img class="hero" src="${base}/img/${r.id}" alt="" />` : ''}
     ${banner}
     <div class="note"><b>Evidence, not a verdict.</b> This reads the file, not the truth of the caption — weigh it yourself.</div>
@@ -415,7 +459,7 @@ function page(title, body, base, og) {
     .dim{color:#8A95A4;font-size:12px}
     .cta{display:block;text-align:center;margin-top:18px;background:var(--ink);color:#fff;text-decoration:none;font-weight:600;padding:14px;border-radius:11px}
   </style></head><body><div class="w">
-    <div class="brand"><span class="g"><svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg"><g stroke="#fff" stroke-width="8" stroke-linecap="round"><line x1="32" y1="34" x2="50" y2="52"/><line x1="50" y1="52" x2="70" y2="36"/><line x1="50" y1="52" x2="52" y2="78"/></g><circle cx="32" cy="34" r="8" fill="#fff"/><circle cx="70" cy="36" r="8" fill="#fff"/><circle cx="52" cy="78" r="8" fill="#fff"/><circle cx="50" cy="52" r="9.5" fill="#fff"/></svg></span> Trace</div>${body}
+    <div class="brand"><span class="g"><svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg"><g stroke="#fff" stroke-width="8" stroke-linecap="round"><line x1="32" y1="34" x2="50" y2="52"/><line x1="50" y1="52" x2="70" y2="36"/><line x1="50" y1="52" x2="52" y2="78"/></g><circle cx="32" cy="34" r="8" fill="#fff"/><circle cx="70" cy="36" r="8" fill="#fff"/><circle cx="52" cy="78" r="8" fill="#fff"/><circle cx="50" cy="52" r="9.5" fill="#fff"/></svg></span> Relity</div>${body}
   </div></body></html>`;
 }
 
