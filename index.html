@@ -206,6 +206,7 @@
 
     <p class="reassure">No sign-up · your image never leaves your device for the file checks</p>
     <p class="tip">From X, Instagram, anywhere: right-click the image → <b>Copy</b> → <b>Paste</b></p>
+    <p class="tip" id="acctLine" style="margin-top:10px"></p>
   </section>
 
   <section class="panel" id="dossier" aria-live="polite">
@@ -247,11 +248,11 @@
               <div class="sc-desc" id="scDesc">Provenance, camera origin & edits traced</div>
             </div>
           </div>
-          <div class="sc-url"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg><span id="scUrl">trace.app/check/—</span></div>
+          <div class="sc-url"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg><span id="scUrl">relity.ai/check/—</span></div>
         </div>
       </div>
       <div class="share-row">
-        <span class="url" id="shareUrl">https://trace.app/check/—</span>
+        <span class="url" id="shareUrl">https://relity.ai/check/—</span>
         <button class="btn ghost" id="copyBtn">Copy link</button>
       </div>
       <div class="recheck">
@@ -269,18 +270,18 @@
 
 <script>
 /* ============================================================
-   Trace — real client-side evidence engine.
+   Relity — real client-side evidence engine.
    Every finding is read from the actual bytes of the file. Nothing faked.
 
    SERVER CONNECTION (no editing needed):
    - Opened as a local file  -> standalone mode (file checks only).
-   - Served by the Trace server (after you deploy) -> it auto-talks to its
+   - Served by the Relity server (after you deploy) -> it auto-talks to its
      own address: web cross-checks + real shareable /check/:id links turn on.
-   - Optional override: set TRACE_SERVER to a URL to force a specific server.
+   - Optional override: set RELITY_SERVER to a URL to force a specific server.
    ============================================================ */
-const TRACE_SERVER = ""; // optional override, e.g. "https://your-trace.onrender.com"
+const RELITY_SERVER = ""; // optional override, e.g. "https://your-relity.onrender.com"
 function apiBase(){
-  if(TRACE_SERVER) return TRACE_SERVER.replace(/\/$/,'');
+  if(RELITY_SERVER) return RELITY_SERVER.replace(/\/$/,'');
   if(location.protocol.startsWith('http')) return location.origin;  // served by a server
   return null; // file:// → standalone
 }
@@ -479,8 +480,8 @@ function renderRows(F,hash,serverOn){
   }).join('');
   // preview link until a real one comes back from the server
   const id=(hash?hash.slice(0,6):Math.random().toString(36).slice(2,8));
-  $('#scUrl').textContent='trace.app/check/'+id;
-  $('#shareUrl').textContent='https://trace.app/check/'+id;
+  $('#scUrl').textContent='relity.ai/check/'+id;
+  $('#shareUrl').textContent='https://relity.ai/check/'+id;
   dossier.classList.add('show'); $('#submitPanel').style.display='none';
   dossier.scrollIntoView({behavior:'smooth',block:'start'});
   setTimeout(()=>rowsEl.classList.add('revealed'),60);
@@ -541,7 +542,7 @@ function setWebMeter(on,stat){
   const st=m.querySelector('.meter-stat'); st.textContent=stat; st.className='meter-stat '+(on?'':'muted');
 }
 
-/* talks to the Trace server's own address; upgrades rows + share link on success */
+/* talks to the Relity server's own address; upgrades rows + share link on success */
 async function publishToServer(file,hash,localFindings,readObj,sig,claim){
   sig=sig||{};
   const prov = sig.c2paAI?'ai-cred' : sig.aiName?'ai-marker' : sig.c2pa?'credential' : sig.hasCamera?'camera' : 'stripped';
@@ -558,7 +559,10 @@ async function publishToServer(file,hash,localFindings,readObj,sig,claim){
 
   const rev=j.reverse||{};
   let reachFlag=null, count=0, examined=false, vintage=null;
-  if(rev.connected && rev.degraded){
+  if(rev.connected && rev.limited){
+    setRow('r-reverse',{ic:'srv',state:['srv','Limit reached'],read: rev.note||'Free daily web-checks are used up — the file checks above still ran.',data:'Sign in / upgrade to keep running live web cross-checks.'});
+    setWebMeter(0,'Upgrade');
+  } else if(rev.connected && rev.degraded){
     // honest "couldn't check" — leave reachFlag/count neutral so consensus gets no false signal
     setRow('r-reverse',{ic:'srv',state:['srv','Unavailable'],read: rev.note||'The web-appearance check couldn’t run for this image.',data:'That evidence is missing for this report — not a sign the image appears nowhere.'});
     setWebMeter(0,'Unavailable');
@@ -602,9 +606,10 @@ async function publishToServer(file,hash,localFindings,readObj,sig,claim){
   }
 
   // ── CONSENSUS: now that every stream is in, weigh them into the top read ──
-  if(rev.connected || debunked){
+  if((rev.connected && !rev.limited) || debunked){
     renderRead(computeConsensus(prov, reachFlag, debunked, count, examined, vintage, mismatchYear));
   }
+  try{ refreshMe(); }catch(_){}
 }
 
 /* wiring */
@@ -669,7 +674,7 @@ async function checkLink(){
       alert(msg+'\n\nReliable trick: right-click the image → “Copy image”, come back here and press Ctrl+V. That works even when a link won’t.');
       return;
     }
-    let claim=null; const ch=r.headers.get('X-Trace-Claim');
+    let claim=null; const ch=r.headers.get('X-Relity-Claim');
     if(ch){ try{ claim=JSON.parse(decodeURIComponent(ch)); }catch(_){ } }
     const blob=await r.blob();
     if(!blob.type.startsWith('image/')){ alert('That link didn’t return an image.\n\nTry right-click → “Copy image”, then press Ctrl+V here.'); return; }
@@ -695,6 +700,35 @@ $('#copyBtn').addEventListener('click',()=>{const t=$('#shareUrl').textContent;n
     const c=new URLSearchParams(location.search).get('check');
     if(c){ const i=$('#linkInput'); if(i){ i.value=c; checkLink(); } }
   }catch(_){}
+})();
+
+/* ----- account + free-quota indicator (no login needed to use the tool) ----- */
+async function refreshMe(){
+  const base=apiBase(); const el=$('#acctLine'); if(!base||!el) return;
+  try{
+    const m=await (await fetch(base+'/api/me')).json();
+    if(m.tier==='pro'){ el.innerHTML='✓ <b>Relity Pro</b> — unlimited web cross-checks'; }
+    else{
+      el.innerHTML=`${m.remaining} of ${m.limit} free web-checks left today · <a href="#" id="upBtn" style="color:var(--signal);font-weight:600;text-decoration:none">Upgrade</a>`;
+      const u=$('#upBtn'); if(u) u.addEventListener('click',ev=>{ev.preventDefault();startUpgrade();});
+    }
+  }catch(_){}
+}
+async function startUpgrade(){
+  const base=apiBase(); if(!base){ alert('Open the live site (relity.ai) to upgrade.'); return; }
+  try{ const j=await (await fetch(base+'/api/checkout',{method:'POST'})).json();
+    if(j.url) location.href=j.url; else alert(j.error||'Upgrades aren’t switched on yet.'); }
+  catch(_){ alert('Could not start checkout. Try again in a moment.'); }
+}
+(async function(){
+  try{
+    const p=new URLSearchParams(location.search);
+    if(p.get('upgraded')&&p.get('session_id')&&apiBase()){
+      await fetch(apiBase()+'/api/claim?session_id='+encodeURIComponent(p.get('session_id'))).catch(()=>{});
+      history.replaceState({},'',location.pathname);
+    }
+  }catch(_){}
+  refreshMe();
 })();
 </script>
 </body>

@@ -1,5 +1,5 @@
 /* ============================================================
-   Trace — server
+   Relity — server
    What it adds on top of the in-browser checks:
      1. Reverse image search   (where else does this image appear / earliest copy)
      2. Known-fake / fact-check (has this been debunked)
@@ -39,11 +39,11 @@ const redisOn = !!(REDIS_URL && REDIS_TOKEN);
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 12 * 1024 * 1024 } });
 app.use(express.static(__dirname));            // serves index.html
-app.use(express.json({ limit: '2mb' }));
+app.use((req, res, next) => req.path === '/webhook/stripe' ? next() : express.json({ limit: '2mb' })(req, res, next));
 
 /* ---------- persistence: Upstash Redis when configured, else in-memory ----------
    Shared reports (and small images) survive redeploys once UPSTASH_* env vars are set.
-   Without them Trace still runs, but resets on restart (fine for local dev).
+   Without them Relity still runs, but resets on restart (fine for local dev).
    The in-memory Maps also act as a fast cache in front of Redis.                  */
 const memReport = new Map();          // id -> report
 const memImg    = new Map();          // id -> {buf,mime}
@@ -61,22 +61,75 @@ async function redisCmd(args) {
 }
 async function putReport(id, report) {
   memReport.set(id, report);
-  if (redisOn) { try { await redisCmd(['SET', 'trace:r:' + id, JSON.stringify(report), 'EX', TTL]); } catch (e) { console.error('redis putReport:', e.message); } }
+  if (redisOn) { try { await redisCmd(['SET', 'relity:r:' + id, JSON.stringify(report), 'EX', TTL]); } catch (e) { console.error('redis putReport:', e.message); } }
 }
 async function getReport(id) {
   if (memReport.has(id)) return memReport.get(id);
-  if (redisOn) { try { const v = await redisCmd(['GET', 'trace:r:' + id]); if (v) { const r = JSON.parse(v); memReport.set(id, r); return r; } } catch (e) { console.error('redis getReport:', e.message); } }
+  if (redisOn) { try { const v = await redisCmd(['GET', 'relity:r:' + id]); if (v) { const r = JSON.parse(v); memReport.set(id, r); return r; } } catch (e) { console.error('redis getReport:', e.message); } }
   return null;
 }
 async function putImage(id, buf, mime) {
   memImg.set(id, { buf, mime });
-  if (redisOn && buf.length <= IMG_PERSIST_MAX) { try { await redisCmd(['SET', 'trace:i:' + id, JSON.stringify({ mime, b64: buf.toString('base64') }), 'EX', TTL]); } catch (e) { console.error('redis putImage:', e.message); } }
+  if (redisOn && buf.length <= IMG_PERSIST_MAX) { try { await redisCmd(['SET', 'relity:i:' + id, JSON.stringify({ mime, b64: buf.toString('base64') }), 'EX', TTL]); } catch (e) { console.error('redis putImage:', e.message); } }
 }
 async function getImage(id) {
   if (memImg.has(id)) return memImg.get(id);
-  if (redisOn) { try { const v = await redisCmd(['GET', 'trace:i:' + id]); if (v) { const o = JSON.parse(v); const img = { buf: Buffer.from(o.b64, 'base64'), mime: o.mime }; memImg.set(id, img); return img; } } catch (e) { console.error('redis getImage:', e.message); } }
+  if (redisOn) { try { const v = await redisCmd(['GET', 'relity:i:' + id]); if (v) { const o = JSON.parse(v); const img = { buf: Buffer.from(o.b64, 'base64'), mime: o.mime }; memImg.set(id, img); return img; } } catch (e) { console.error('redis getImage:', e.message); } }
   return null;
 }
+/* ---------- rate limiting (per IP) — Redis-backed when available, else in-memory ----------
+   Protects the engine and the paid-API bill from bursts/abuse. Tune via env vars.        */
+const RL_PUBLISH = { max: +process.env.RL_PUBLISH_MAX || 40, win: 600 };  // 40 checks / 10 min / IP
+const RL_PROXY   = { max: +process.env.RL_PROXY_MAX   || 60, win: 600 };  // 60 link-fetches / 10 min / IP
+const memRate = new Map();
+async function allow(name, ip, max, win) {
+  const k = `relity:rl:${name}:${ip}`;
+  if (redisOn) {
+    try { const n = await redisCmd(['INCR', k]); if (n === 1) await redisCmd(['EXPIRE', k, win]); return n <= max; }
+    catch { /* fall back to in-memory */ }
+  }
+  const now = Date.now(), rec = memRate.get(k);
+  if (!rec || now > rec.resetAt) { memRate.set(k, { count: 1, resetAt: now + win * 1000 }); return true; }
+  rec.count++; return rec.count <= max;
+}
+const clientIp = req => (req.ip || (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || 'unknown');
+
+/* ---------- anonymous device id + daily free quota ----------
+   No login to use Relity. We mint a random device id in an httpOnly cookie so we can
+   meter the one *paid* check (web cross-check) per device per day. The in-browser file
+   checks always run and are never gated. Cached web results don't count. Accounts +
+   Stripe later raise/remove the limit — this metering layer stays the same.          */
+const FREE_DAILY = Number.isFinite(+process.env.RELITY_FREE_DAILY) ? +process.env.RELITY_FREE_DAILY : 10;   // free paid-web-checks / device / day (0 = require sign-in)
+const memQuota = new Map();
+const today = () => new Date().toISOString().slice(0, 10);
+function readCookie(req, name) {
+  for (const part of (req.headers.cookie || '').split(';')) {
+    const [k, ...v] = part.trim().split('='); if (k === name) return decodeURIComponent(v.join('='));
+  }
+  return null;
+}
+function deviceId(req, res) {
+  let id = readCookie(req, 'rid');
+  if (!id || !/^[a-f0-9]{24,}$/.test(id)) {
+    id = crypto.randomBytes(16).toString('hex');
+    const secure = req.protocol === 'https' ? '; Secure' : '';
+    res.setHeader('Set-Cookie', `rid=${id}; Path=/; Max-Age=31536000; HttpOnly; SameSite=Lax${secure}`);
+  }
+  return id;
+}
+async function quotaGet(id) {
+  const k = `relity:q:${id}:${today()}`;
+  if (redisOn) { try { return +(await redisCmd(['GET', k])) || 0; } catch { /* fall back */ } }
+  const rec = memQuota.get(k); return rec ? rec.count : 0;
+}
+async function quotaInc(id) {
+  const k = `relity:q:${id}:${today()}`;
+  if (redisOn) { try { const n = await redisCmd(['INCR', k]); if (n === 1) await redisCmd(['EXPIRE', k, 172800]); return n; } catch { /* fall back */ } }
+  const rec = memQuota.get(k) || { count: 0 }; rec.count++; memQuota.set(k, rec); return rec.count;
+}
+
+const billing = require('./billing')({ redisOn, redisCmd, readCookie });
+
 const shortId  = sha => (sha ? sha.slice(0, 10) : crypto.randomBytes(5).toString('hex'));
 
 /* ---------- adapter 1: reverse image search (SerpAPI / Google Lens) ----------
@@ -137,6 +190,9 @@ async function factCheck(queries) {
 /* ---------- publish: run cross-checks, store, return id ---------- */
 app.post('/api/publish', upload.single('image'), async (req, res) => {
   try {
+    const ip = clientIp(req);
+    if (!(await allow('publish', ip, RL_PUBLISH.max, RL_PUBLISH.win)))
+      return res.status(429).json({ error: 'You’re checking images very fast — give it a moment and try again.' });
     const sha = (req.body.sha256 || '').trim();
     const id  = shortId(sha);
     let findings = [];
@@ -151,7 +207,26 @@ app.post('/api/publish', upload.single('image'), async (req, res) => {
     const base = `${req.protocol}://${req.get('host')}`;
     const publicImageUrl = req.file ? `${base}/img/${id}` : null;
 
-    const reverse = publicImageUrl ? await reverseSearch(publicImageUrl) : { connected: false };
+    // COST CACHE + FREE QUOTA: reverse image search is the paid call.
+    // 1) Identical images share a fingerprint (id) → reuse a prior result, free, never metered.
+    // 2) Otherwise meter against the device's daily free allowance; over it, skip the paid call.
+    const rid = deviceId(req, res);
+    const acct = await billing.tierOf(req);
+    const limit = acct.tier === 'pro' ? billing.PRO_DAILY : FREE_DAILY;
+    const prior = sha ? await getReport(id) : null;
+    let reverse, reverseCached = false;
+    if (prior && prior.reverse && prior.reverse.connected && !prior.reverse.degraded) {
+      reverse = prior.reverse; reverseCached = true;
+    } else if (publicImageUrl && SERPAPI_KEY) {
+      if ((await quotaGet(rid)) >= limit) {
+        reverse = { connected: true, limited: true, note: 'Free daily web-checks are used up. The file checks still ran — sign in / upgrade to keep running live web cross-checks.' };
+      } else {
+        reverse = await reverseSearch(publicImageUrl);
+        if (reverse.connected && !reverse.degraded) await quotaInc(rid);   // only a real paid lookup counts
+      }
+    } else {
+      reverse = publicImageUrl ? await reverseSearch(publicImageUrl) : { connected: false };
+    }
     const captions = (reverse.matches || []).map(m => m.title);
     // the submitted claim is the most direct thing to fact-check — check it first
     const claimText = claim && (claim.title || claim.description) ? (claim.title || claim.description) : null;
@@ -166,9 +241,9 @@ app.post('/api/publish', upload.single('image'), async (req, res) => {
       claimOut = { title: claim.title || '', description: claim.description || '', source: claim.source || '', mismatch };
     }
 
-    const report = { id, sha256: sha, createdAt: Date.now(), findings, read, reverse, fact, prov: (req.body.prov || null), claim: claimOut, hasImage: !!req.file };
+    const report = { id, sha256: sha, createdAt: Date.now(), findings, read, reverse, reverseCached, fact, prov: (req.body.prov || null), claim: claimOut, hasImage: !!req.file };
     await putReport(id, report);
-    res.json({ id, reverse, fact, claim: claimOut });
+    res.json({ id, reverse, fact, claim: claimOut, quota: { used: await quotaGet(rid), limit, tier: acct.tier } });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -188,6 +263,16 @@ app.get('/img/:id', async (req, res) => {
 
 // lightweight keep-warm target for an external uptime pinger (avoids the cold-start wait)
 app.get('/healthz', (req, res) => res.type('text').send('ok'));
+
+// who am I + how much free quota is left today (no login required)
+app.get('/api/me', async (req, res) => {
+  const id = deviceId(req, res);
+  const acct = await billing.tierOf(req);
+  const limit = acct.tier === 'pro' ? billing.PRO_DAILY : FREE_DAILY;
+  const used = await quotaGet(id);
+  const reset = new Date(); reset.setUTCHours(24, 0, 0, 0);
+  res.json({ tier: acct.tier, email: acct.email || null, used, limit, remaining: Math.max(0, limit - used), resetsAt: reset.toISOString() });
+});
 
 /* ---------- fetch an image from a pasted link ----------
    Handles a direct image URL, or an article/page URL (pulls its og:image).
@@ -250,6 +335,8 @@ function extractClaim(html, host){
 }
 
 app.get('/api/proxy-image', async (req, res) => {
+  if (!(await allow('proxy', clientIp(req), RL_PROXY.max, RL_PROXY.win)))
+    return res.status(429).json({ error: 'Too many link fetches right now — wait a moment and try again.' });
   const raw = (req.query.url || '').toString().trim();
   let u;
   try { u = new URL(raw); } catch { return res.status(400).json({ error: 'That doesn’t look like a valid link.' }); }
@@ -278,7 +365,7 @@ app.get('/api/proxy-image', async (req, res) => {
       img = new URL(img, u.href).href;
       // read the claim wrapped around the image (the caption is where the lie usually lives)
       const claim = extractClaim(html, u.hostname);
-      if (claim) { res.set('X-Trace-Claim', encodeURIComponent(JSON.stringify(claim))); res.set('Access-Control-Expose-Headers', 'X-Trace-Claim'); }
+      if (claim) { res.set('X-Relity-Claim', encodeURIComponent(JSON.stringify(claim))); res.set('Access-Control-Expose-Headers', 'X-Relity-Claim'); }
       const ir = await grab(img, 'image/*');
       const ict = (ir.headers.get('content-type') || '').toLowerCase();
       if (!ict.startsWith('image/')) return res.status(422).json({ error: 'Found a preview link but it wasn’t an image.' });
@@ -480,4 +567,6 @@ function page(title, body, base, og) {
   </div></body></html>`;
 }
 
-app.listen(PORT, () => console.log(`Trace running on http://localhost:${PORT}`));
+billing.mount(app, express);
+
+app.listen(PORT, () => console.log(`Relity running on http://localhost:${PORT}`));

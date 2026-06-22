@@ -1,82 +1,79 @@
-# Deploy Trace — plain-English guide (no coding)
+# Deploy & update Relity — plain-English guide (no coding)
 
-Goal: turn these files into a real web address anyone can open, like
-`https://trace-xxxx.onrender.com`. We do it in two phases.
+Relity is already live at **https://relity.ai** (served by Render, domain via Porkbun → Cloudflare DNS).
+This guide is mostly about **pushing updates** and **turning on features with keys**.
 
-- **Phase 1 (now):** get it LIVE. File checks + real shareable links work. No API keys needed.
-- **Phase 2 (later):** add two keys to switch on web search + fact-check.
-
-You do NOT need to edit any code. The app connects to its own server automatically.
+How updates work: your files live in the GitHub repo, and Render watches that repo.
+**Push new files to GitHub → Render rebuilds and redeploys automatically.** That's the whole loop.
 
 ────────────────────────────────────────
-PHASE 1 — GET IT LIVE (about 15 minutes)
+A. PUSH AN UPDATE (about 3 minutes)
 ────────────────────────────────────────
+Do this whenever the local files change (like the rename + Pro features we just added).
 
-You'll use two free websites:
-- GitHub = a free locker to hold the files online.
-- Render = the free host that runs them and gives you the web address.
+1. Go to your GitHub repo (the `Bitnooby/Trace` tab).
+2. Click **Add file → Upload files**.
+3. Drag in the changed files from your `Truth Project` folder:
+      index.html   server.js   billing.js   package.json   (and DEPLOY.md / README.md if you like)
+   - `billing.js` is new — make sure it goes in.
+4. Click **Commit changes**.
+5. Open the Render tab. The service starts building on its own (~2–3 min). When it says **Live**, refresh https://relity.ai.
 
-STEP 1 — Make a GitHub account
-  1. Go to github.com → Sign up. It's free.
+Tip to confirm the new build is live: the share card should now read **relity.ai/check/…** (the old build said `trace.app`).
 
-STEP 2 — Put the 4 files into a GitHub "repository"
-  1. Top-right, click the "+" → New repository.
-  2. Repository name: trace   →   leave it Public   →   click Create repository.
-  3. On the next page, click the link "uploading an existing file"
-     (or: Add file → Upload files).
-  4. Drag these four files into the browser window:
-        index.html   server.js   package.json   README.md
-  5. Click Commit changes. (Done — your files now live online.)
-
-STEP 3 — Make a Render account
-  1. Go to render.com → Get Started.
-  2. Choose "Sign up with GitHub" and approve. (Links the two together.)
-
-STEP 4 — Create the Web Service
-  1. In the Render dashboard, click New +  →  Web Service.
-  2. Find your "trace" repo and click Connect.
-     (If you don't see it: click "Configure account / repository access",
-      allow Render to see the trace repo, come back.)
-  3. Render fills most of this in. Confirm these boxes say:
-        Build Command:   npm install
-        Start Command:   npm start
-        Instance Type:   Free
-  4. Click Create Web Service.
-
-STEP 5 — Wait, then open it
-  1. Render builds for ~2-3 minutes. When the top says "Live",
-     click the URL (https://trace-xxxx.onrender.com).
-  2. That's your tool, live on the internet.
-  3. Drop in an image. Now the share link is REAL:
-     copy it, open it on your phone — the result page loads.
-     Paste it into a chat or X — it unfurls into the Trace card.
-
-Note (honest): the free plan "sleeps" after ~15 min idle, so the first
-visit after a quiet spell takes ~30-50 seconds to wake up, then it's fast.
-Totally fine for testing and sharing. Upgrade later if traffic grows.
+⚠️ Do NOT rename the Render service (`trace-g59u`) or the GitHub repo casually — your domain’s DNS
+points at `trace-g59u.onrender.com`, so renaming breaks https://relity.ai until you update Porkbun.
 
 ────────────────────────────────────────
-PHASE 2 — TURN ON WEB SEARCH + FACT-CHECK (later)
+B. ENVIRONMENT VARIABLES (set once, in Render)
 ────────────────────────────────────────
+Render → your service → **Environment** → Add Environment Variable. Add the name + value, Save (it redeploys).
+Everything is optional — anything you leave out simply stays "not configured", nothing breaks.
 
-When you're ready, get two keys and paste them into Render:
+Web checks (Phase 2):
+  • SERPAPI_KEY            — reverse image search (serpapi.com)
+  • FACTCHECK_KEY          — Google Fact Check Tools API (free Google Cloud key)
 
-  - SERPAPI_KEY    → reverse image search (sign up at serpapi.com)
-  - FACTCHECK_KEY  → Google Fact Check Tools API (a Google Cloud key)
+Storage (you already have Upstash connected — keeps shared links, cache, quota, rate limits alive):
+  • UPSTASH_REDIS_REST_URL
+  • UPSTASH_REDIS_REST_TOKEN
 
-In Render: open your service → Environment → Add Environment Variable →
-add each name + its key → Save. Render redeploys, and the two greyed-out
-checks switch on by themselves.
+Cost + abuse controls (sensible defaults built in; override only if you want):
+  • RELITY_FREE_DAILY      — free web-checks per device per day (default 10; 0 = require sign-in)
+  • RL_PUBLISH_MAX         — checks per IP per 10 min (default 40)
+  • RL_PROXY_MAX           — link-fetches per IP per 10 min (default 60)
 
-(Ask Claude to walk you through getting each key — it's a short, separate errand.)
+Accounts + payments (Phase 4 — see section C):
+  • RELITY_SECRET          — long random string used to sign the login cookie (REQUIRED before charging)
+  • STRIPE_SECRET          — sk_live_… (or sk_test_… while testing)
+  • STRIPE_PRICE           — price_… for your monthly plan
+  • STRIPE_WEBHOOK_SECRET  — whsec_… from the webhook you create
+  • RELITY_PRO_DAILY       — Pro daily allowance (default 1000 ≈ unlimited for consumers)
+
+────────────────────────────────────────
+C. TURN ON PRO (Stripe) — one-time setup
+────────────────────────────────────────
+The code is already wired; you just need a Stripe account and four values.
+
+1. Create a Stripe account at stripe.com. Start in **Test mode** (toggle, top-right) until it works.
+2. **Product + price:** Products → Add product → name "Relity Pro", recurring **monthly**, set the price
+   (the model suggested ~$8). Save, then copy the **Price ID** (looks like `price_...`) → that's STRIPE_PRICE.
+3. **Secret key:** Developers → API keys → copy the **Secret key** (`sk_test_...`) → that's STRIPE_SECRET.
+4. **Webhook:** Developers → Webhooks → Add endpoint:
+      URL:     https://relity.ai/webhook/stripe
+      Events:  checkout.session.completed, customer.subscription.deleted, invoice.payment_failed
+   Save, then copy the **Signing secret** (`whsec_...`) → that's STRIPE_WEBHOOK_SECRET.
+5. Put all four (plus a long random RELITY_SECRET) into Render → Environment → Save.
+6. Test with Stripe's test card `4242 4242 4242 4242`, any future date, any CVC.
+   When it works, switch Stripe to **Live mode**, redo the key + webhook with live values, update Render.
+
+How it behaves: the site shows "N free web-checks left today · Upgrade". Upgrade → Stripe Checkout →
+back to relity.ai as Pro on that device. File checks always stay free for everyone, no login.
 
 ────────────────────────────────────────
 IF SOMETHING LOOKS OFF
 ────────────────────────────────────────
-- Page loads but says "Application failed": in Render, open the "Logs" tab,
-  copy the red lines, and send them to Claude.
-- Build failed: make sure all four files are in the repo's top level
-  (not inside a folder).
-- Share link shows a "not found" page: in the free prototype, reports reset
-  when the server sleeps/restarts. That's the in-memory storage note in the
-  README — swapping in a database fixes it permanently.
+• Build failed: Render → Logs → copy the red lines, send them to Claude.
+• "Application failed": same — Logs tab, red lines.
+• Upgrade button says "not set up": Stripe env vars aren’t in Render yet (section C).
+• Shared link 404s after a deploy: shared reports live in Upstash; if Redis isn’t connected they reset on restart.
