@@ -7,6 +7,10 @@
 <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 <link rel="manifest" href="/site.webmanifest" />
 <meta name="theme-color" content="#0B6E6E" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
+<meta name="apple-mobile-web-app-title" content="Relity" />
+<meta name="mobile-web-app-capable" content="yes" />
 <link rel="apple-touch-icon" href="/icon-192.png" />
 <script>if('serviceWorker' in navigator){window.addEventListener('load',function(){navigator.serviceWorker.register('/sw.js').catch(function(){});});}</script>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -221,6 +225,7 @@
     <p class="reassure">No sign-up · your image never leaves your device for the file checks</p>
     <p class="tip">Copy <b>any image or link</b> from anywhere, then paste it here — <b>Ctrl / ⌘ V</b>.</p>
     <p class="tip" id="acctLine" style="margin-top:10px"></p>
+    <p class="tip" id="iosHint" style="display:none;margin-top:8px"></p>
   </section>
 
   <section class="panel" id="dossier" aria-live="polite">
@@ -763,11 +768,18 @@ async function checkClaim(){
   const btn=$('#claimBtn'); const lab=btn.textContent; btn.textContent='Checking…'; btn.disabled=true;
   try{
     const r=await fetch(base+'/api/check-claim',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:t})});
-    const j=await r.json();
-    if(j&&j.read){ out.innerHTML=claimBanner(j.read)+sourceList(j.sources); }
-    else out.innerHTML='<p class="tip">'+esc((j&&j.error)||'Could not check that claim.')+'</p>';
-  }catch(_){ out.innerHTML='<p class="tip">Could not reach the server.</p>'; }
-  finally{ btn.textContent=lab; btn.dis/* ----- account + free-quota indicator (no login needed to use the tool) ----- */
+    c
+/* iOS gives no install prompt — show a gentle hint on iPhone/iPad Safari */
+(function(){
+  try{
+    var ua=navigator.userAgent||'';
+    var iOS=/iPhone|iPad|iPod/.test(ua)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+    var standalone=('standalone' in navigator)&&navigator.standalone;
+    if(iOS&&!standalone){ var el=document.getElementById('iosHint'); if(el){ el.innerHTML='📲 Install Relity: tap <b>Share</b>, then <b>Add to Home Screen</b>.'; el.style.display=''; } }
+  }catch(_){}
+})();
+
+/* ----- account + free-quota indicator (no login needed to use the tool) ----- */
 async function refreshMe(){
   const base=apiBase(); const el=$('#acctLine'); if(!base||!el) return;
   try{
