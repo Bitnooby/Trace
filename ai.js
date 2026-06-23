@@ -1,6 +1,6 @@
 module.exports = function ai({ redisOn, redisCmd } = {}) {
   const GEMINI_KEY    = process.env.GEMINI_API_KEY || '';
-  const GEMINI_MODEL  = process.env.GEMINI_MODEL || 'gemini-flash-latest';
+  const GEMINI_MODEL  = process.env.GEMINI_MODEL || 'gemini-3.5-flash';
   const ANTH_KEY      = process.env.ANTHROPIC_API_KEY || '';
   const ANTH_MODEL    = process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5-20251001';
   const mem = new Map();
