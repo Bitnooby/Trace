@@ -5,6 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Relity — Evidence, not verdicts</title>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+<link rel="manifest" href="/site.webmanifest" />
+<meta name="theme-color" content="#0B6E6E" />
+<link rel="apple-touch-icon" href="/icon-192.png" />
+<script>if('serviceWorker' in navigator){window.addEventListener('load',function(){navigator.serviceWorker.register('/sw.js').catch(function(){});});}</script>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;450;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
@@ -724,14 +728,21 @@ $('#copyBtn').addEventListener('click',()=>{const t=$('#shareUrl').textContent;n
 /* badge reflects mode */
 (function(){ const b=$('#modeBadge'); if(apiBase()&&!location.protocol.startsWith('file')) { /* served */ } })();
 
-/* Browser-extension entry point: ?check=<image/link/page url> or ?claim=<text> → auto-run */
+/* Entry points: extension (?check / ?claim) + mobile Share sheet (url / text / title) */
 (function(){
   try{
     const q=new URLSearchParams(location.search);
     const c=q.get('check');
     if(c){ const i=$('#linkInput'); if(i){ i.value=c; checkLink(); } return; }
     const cl=q.get('claim');
-    if(cl){ const i=$('#claimInput'); if(i){ i.value=cl; checkClaim(); } }
+    if(cl){ const i=$('#claimInput'); if(i){ i.value=cl; checkClaim(); } return; }
+    // Mobile "Share to Relity": a shared link or text arrives as url / text / title
+    const shared=(q.get('url')||q.get('text')||q.get('title')||'').trim();
+    if(shared){
+      const m=shared.match(/https?:\/\/\S+/);
+      if(m){ const i=$('#linkInput'); if(i){ i.value=m[0]; checkLink(); } }
+      else { const i=$('#claimInput'); if(i){ i.value=shared.slice(0,500); checkClaim(); } }
+    }
   }catch(_){}
 })();
 
@@ -756,12 +767,7 @@ async function checkClaim(){
     if(j&&j.read){ out.innerHTML=claimBanner(j.read)+sourceList(j.sources); }
     else out.innerHTML='<p class="tip">'+esc((j&&j.error)||'Could not check that claim.')+'</p>';
   }catch(_){ out.innerHTML='<p class="tip">Could not reach the server.</p>'; }
-  finally{ btn.textContent=lab; btn.disabled=false; }
-}
-$('#claimBtn').addEventListener('click',checkClaim);
-$('#claimInput').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();checkClaim();}});
-
-/* ----- account + free-quota indicator (no login needed to use the tool) ----- */
+  finally{ btn.textContent=lab; btn.dis/* ----- account + free-quota indicator (no login needed to use the tool) ----- */
 async function refreshMe(){
   const base=apiBase(); const el=$('#acctLine'); if(!base||!el) return;
   try{
