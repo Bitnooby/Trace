@@ -129,6 +129,7 @@ async function quotaInc(id) {
 }
 
 const billing = require('./billing')({ redisOn, redisCmd, readCookie });
+const claims  = require('./claims')({ SERPAPI_KEY, FACTCHECK_KEY });
 
 const shortId  = sha => (sha ? sha.slice(0, 10) : crypto.randomBytes(5).toString('hex'));
 
@@ -568,5 +569,11 @@ function page(title, body, base, og) {
 }
 
 billing.mount(app, express);
+app.use('/api/check-claim', async (req, res, next) => {
+  if (!(await allow('claim', clientIp(req), RL_PUBLISH.max, RL_PUBLISH.win)))
+    return res.status(429).json({ error: 'Too many checks right now — give it a moment.' });
+  next();
+});
+claims.mount(app);
 
 app.listen(PORT, () => console.log(`Relity running on http://localhost:${PORT}`));

@@ -124,7 +124,11 @@
   .row-main{min-width:0}
   .row-name{font-family:var(--display);font-weight:600;font-size:15px}
   .row-read{color:var(--graphite);font-size:13.5px;margin-top:4px;line-height:1.5;overflow-wrap:anywhere}
-  .row-data{font-family:var(--mono);font-size:12px;color:var(--ink);background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:7px 10px;margin-top:9px;word-break:break-word;white-space:pre-wrap;line-height:1.5}
+  .row-data{display:none;font-family:var(--mono);font-size:12px;color:var(--ink);background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:7px 10px;margin-top:9px;word-break:break-word;white-space:pre-wrap;line-height:1.5}
+  .row.open .row-data{display:block}
+  .row.has-data{cursor:pointer}
+  .row.has-data .row-name::after{content:" · details";font-family:var(--mono);font-size:10.5px;font-weight:500;color:var(--signal);letter-spacing:.02em}
+  .row.open.has-data .row-name::after{content:" · hide"}
   .row-side{display:flex;align-items:flex-end}
   .state{font-family:var(--mono);font-size:10.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;padding:4px 9px;border-radius:20px;white-space:nowrap}
   .state.present{background:var(--ok-wash);color:var(--ok)} .state.absent{background:var(--paper);color:var(--faint);border:1px solid var(--line)}
@@ -203,6 +207,11 @@
     <div class="caprow">
       <input type="text" id="captionInput" placeholder="Optional — paste the caption it was posted with (catches false context)" aria-label="Optional caption the image was posted with" />
     </div>
+    <div class="caprow" style="display:flex;gap:7px;margin-top:9px">
+      <input type="text" id="claimInput" placeholder="Or check a claim / headline on its own — no image needed" aria-label="Check a claim or headline" style="flex:1" />
+      <button class="btn ghost" id="claimBtn" type="button">Check claim</button>
+    </div>
+    <div id="claimOut" style="margin-top:14px"></div>
 
     <p class="reassure">No sign-up · your image never leaves your device for the file checks</p>
     <p class="tip">From X, Instagram, anywhere: right-click the image → <b>Copy</b> → <b>Paste</b></p>
@@ -476,7 +485,7 @@ function renderRows(F,hash,serverOn){
   rowsEl.innerHTML=F.map(f=>{
     if(f.section)return `<div class="section-label">${esc(f.section)}</div>`;
     const[cls,label]=f.state;
-    return `<div class="row" ${f.id?`id="${f.id}"`:''}><div class="row-ic ic-${f.ic}">${svg(f.ic)}</div><div class="row-main"><div class="row-name">${esc(f.name)}</div><div class="row-read">${esc(f.read)}</div><div class="row-data">${esc(f.data)}</div></div><div class="row-side"><span class="state ${cls}">${esc(label)}</span></div></div>`;
+    return `<div class="row ${f.data?'has-data':''}" ${f.id?`id="${f.id}"`:''}><div class="row-ic ic-${f.ic}">${svg(f.ic)}</div><div class="row-main"><div class="row-name">${esc(f.name)}</div><div class="row-read">${esc(f.read)}</div><div class="row-data">${esc(f.data)}</div></div><div class="row-side"><span class="state ${cls}">${esc(label)}</span></div></div>`;
   }).join('');
   // preview link until a real one comes back from the server
   const id=(hash?hash.slice(0,6):Math.random().toString(36).slice(2,8));
@@ -624,6 +633,7 @@ fileInput.addEventListener('change',e=>handleFile(e.target.files[0]));
 ['dragenter','dragover'].forEach(ev=>dropzone.addEventListener(ev,e=>{e.preventDefault();dropzone.classList.add('drag');}));
 ['dragleave','drop'].forEach(ev=>dropzone.addEventListener(ev,e=>{e.preventDefault();dropzone.classList.remove('drag');}));
 dropzone.addEventListener('drop',e=>handleFile(e.dataTransfer.files[0]));
+rowsEl.addEventListener('click',e=>{const r=e.target.closest('.row.has-data');if(r)r.classList.toggle('open');});
 
 /* ----- paste an image from clipboard (right-click image → Copy image → Ctrl+V) ----- */
 window.addEventListener('paste',e=>{
@@ -701,6 +711,32 @@ $('#copyBtn').addEventListener('click',()=>{const t=$('#shareUrl').textContent;n
     if(c){ const i=$('#linkInput'); if(i){ i.value=c; checkLink(); } }
   }catch(_){}
 })();
+
+/* ----- check a claim / headline on its own (no image needed) ----- */
+function claimBanner(rd){
+  const cls={debunk:'r-red',scrutinize:'r-amber',photo:'r-blue',verified:'r-green'}[rd.level]||'r-amber';
+  return `<div class="read-banner ${cls}" style="border-radius:13px"><div class="rb-eyebrow">${esc(rd.eyebrow||'Consensus — the evidence, weighed')}</div><div class="rb-badge"><span class="dotb"></span>${esc(rd.badge)}</div><div class="rb-line">${esc(rd.line)}</div></div>`;
+}
+function sourceList(s){
+  if(!s||!s.items||!s.items.length) return '';
+  const rows=s.items.slice(0,6).map(m=>`<div class="row"><div class="row-main"><div class="row-name">${esc(m.title||m.source||'source')}</div><div class="row-read">${esc((m.source||'')+(m.date?' · '+m.date:''))}</div></div></div>`).join('');
+  return `<div class="card" style="margin-top:12px"><div class="sec">Where this claim shows up</div>${rows}</div>`;
+}
+async function checkClaim(){
+  const t=$('#claimInput').value.trim(); const out=$('#claimOut'); const base=apiBase();
+  if(!t){ $('#claimInput').focus(); return; }
+  if(!base){ out.innerHTML='<p class="tip">Checking a claim needs the live server — open relity.ai.</p>'; return; }
+  const btn=$('#claimBtn'); const lab=btn.textContent; btn.textContent='Checking…'; btn.disabled=true;
+  try{
+    const r=await fetch(base+'/api/check-claim',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:t})});
+    const j=await r.json();
+    if(j&&j.read){ out.innerHTML=claimBanner(j.read)+sourceList(j.sources); }
+    else out.innerHTML='<p class="tip">'+esc((j&&j.error)||'Could not check that claim.')+'</p>';
+  }catch(_){ out.innerHTML='<p class="tip">Could not reach the server.</p>'; }
+  finally{ btn.textContent=lab; btn.disabled=false; }
+}
+$('#claimBtn').addEventListener('click',checkClaim);
+$('#claimInput').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();checkClaim();}});
 
 /* ----- account + free-quota indicator (no login needed to use the tool) ----- */
 async function refreshMe(){
