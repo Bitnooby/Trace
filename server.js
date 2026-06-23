@@ -38,6 +38,7 @@ const REDIS_TOKEN   = process.env.UPSTASH_REDIS_REST_TOKEN || '';
 const redisOn = !!(REDIS_URL && REDIS_TOKEN);
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 12 * 1024 * 1024 } });
+const uploadVideo = multer({ storage: multer.memoryStorage(), limits: { fileSize: 30 * 1024 * 1024 } });
 app.use(express.static(__dirname));            // serves index.html
 app.use((req, res, next) => req.path === '/webhook/stripe' ? next() : express.json({ limit: '2mb' })(req, res, next));
 
@@ -130,6 +131,7 @@ async function quotaInc(id) {
 
 const billing = require('./billing')({ redisOn, redisCmd, readCookie });
 const claims  = require('./claims')({ SERPAPI_KEY, FACTCHECK_KEY });
+const video   = require('./video')({ SERPAPI_KEY, putImage });
 
 const shortId  = sha => (sha ? sha.slice(0, 10) : crypto.randomBytes(5).toString('hex'));
 
@@ -575,5 +577,11 @@ app.use('/api/check-claim', async (req, res, next) => {
   next();
 });
 claims.mount(app);
+app.use('/api/check-video', async (req, res, next) => {
+  if (!(await allow('video', clientIp(req), RL_PUBLISH.max, RL_PUBLISH.win)))
+    return res.status(429).json({ error: 'Too many video checks right now — give it a moment.' });
+  next();
+});
+video.mount(app, uploadVideo);
 
 app.listen(PORT, () => console.log(`Relity running on http://localhost:${PORT}`));
