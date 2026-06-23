@@ -470,6 +470,7 @@ async function analyze(file, claim){
   if(claim && (claim.title||claim.description)) F.push({id:'r-claim',ic:'signal',name:'The claim',state:['srv', serverOn?'Checking…':'Recorded'],read:'The headline or caption wrapped around this image — where misinformation usually hides. Relity weighs it against the fact-check record and the image’s age, but can’t judge whether the photo truly depicts it.',data:'“'+(claim.title||claim.description)+'”'+(claim.source?'  — '+claim.source:'')});
   F.push({id:'r-reverse',ic:'srv',name:'Where it appears',state:['srv', serverOn?'Checking…':'Local only'],read:'Where this image shows up across the web — the best signal for catching recycled or miscaptioned images, and a hint at its origin.',data: serverOn?'Querying the connected server…':'Open this on the deployed server to run web checks.'});
   F.push({id:'r-fact',ic:'srv',name:'Fact-check record',state:['srv', serverOn?'Checking…':'Local only'],read:'Whether fact-checkers have already debunked this exact image (matched by fingerprint + found captions).',data: serverOn?'Querying the connected server…':'Open this on the deployed server to run web checks.'});
+  F.push({id:'r-ai',ic:'srv',name:'AI vision read',state:['srv', serverOn?'Looking…':'Local only'],read:'An AI looks at the image itself — what it shows, signs of AI generation, and whether it matches the caption. One signal, not a verdict.',data: serverOn?'Asking the vision model…':'Runs on the live server.'});
 
   // ── SECONDARY: what the file itself shows (condensed) ──
   F.push({section:'What the file shows'});
@@ -624,6 +625,9 @@ async function publishToServer(file,hash,localFindings,readObj,sig,claim){
     }
   }
 
+  const air=j.aiRead;
+  if(air&&air.text){ setRow('r-ai',{ic:'ai',state:['ai', air.tierLabel||'AI'],read:air.text,data:'AI vision · '+(air.model||air.provider)+' — one model’s read; weigh it with the evidence above.'}); }
+  else { setRow('r-ai',{ic:'srv',state:['srv','—'],read:'AI vision isn’t switched on yet (add a vision API key).',data:'Free: Gemini · Pro: Claude.'}); }
   // ── CONSENSUS: now that every stream is in, weigh them into the top read ──
   if((rev.connected && !rev.limited) || debunked){
     renderRead(computeConsensus(prov, reachFlag, debunked, count, examined, vintage, mismatchYear));

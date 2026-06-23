@@ -132,6 +132,7 @@ async function quotaInc(id) {
 const billing = require('./billing')({ redisOn, redisCmd, readCookie });
 const claims  = require('./claims')({ SERPAPI_KEY, FACTCHECK_KEY });
 const video   = require('./video')({ SERPAPI_KEY, putImage });
+const ai      = require('./ai')({ redisOn, redisCmd });
 
 const shortId  = sha => (sha ? sha.slice(0, 10) : crypto.randomBytes(5).toString('hex'));
 
@@ -234,6 +235,11 @@ app.post('/api/publish', upload.single('image'), async (req, res) => {
     // the submitted claim is the most direct thing to fact-check — check it first
     const claimText = claim && (claim.title || claim.description) ? (claim.title || claim.description) : null;
     const fact = await factCheck([claimText, ...captions].filter(Boolean));
+    let aiRead = null;
+    if (req.file) {
+      const ev = (reverse.domains && reverse.domains.length) ? reverse.domains.slice(0, 4).join(', ') : '';
+      aiRead = await ai.analyzeImage({ tier: acct.tier, sha, buffer: req.file.buffer, mime: req.file.mimetype, caption: claimText, evidence: ev }).catch(() => null);
+    }
 
     // recontextualization: claim presents the image as current, but the image is demonstrably older
     let claimOut = null;
@@ -246,7 +252,7 @@ app.post('/api/publish', upload.single('image'), async (req, res) => {
 
     const report = { id, sha256: sha, createdAt: Date.now(), findings, read, reverse, reverseCached, fact, prov: (req.body.prov || null), claim: claimOut, hasImage: !!req.file };
     await putReport(id, report);
-    res.json({ id, reverse, fact, claim: claimOut, quota: { used: await quotaGet(rid), limit, tier: acct.tier } });
+    res.json({ id, reverse, fact, claim: claimOut, aiRead, quota: { used: await quotaGet(rid), limit, tier: acct.tier } });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
