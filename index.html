@@ -4,6 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Relity — Evidence, not verdicts</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;450;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
@@ -187,7 +188,7 @@
 
     <div class="dropzone" id="dropzone" tabindex="0" role="button" aria-label="Drop or browse for an image">
       <svg class="dz-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2.5"/><circle cx="8.5" cy="8.5" r="1.6"/><path d="m21 15-4.5-4.5L5 21"/></svg>
-      <div class="dz-title">Drop an image</div>
+      <div class="dz-title">Paste, drop, or browse</div>
       <div class="dz-sub">or click to browse · JPEG, PNG, WebP</div>
       <input type="file" id="fileInput" accept="image/*" hidden />
     </div>
@@ -195,7 +196,7 @@
     <div class="alt">
       <button class="paste-btn" id="pasteBtn" type="button">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg>
-        Paste image <span class="kbd-in">Ctrl V</span>
+        Paste <span class="kbd-in">Ctrl V</span>
       </button>
       <span class="alt-or">or</span>
       <div class="linkrow">
@@ -214,7 +215,7 @@
     <div id="claimOut" style="margin-top:14px"></div>
 
     <p class="reassure">No sign-up · your image never leaves your device for the file checks</p>
-    <p class="tip">From X, Instagram, anywhere: right-click the image → <b>Copy</b> → <b>Paste</b></p>
+    <p class="tip">Copy <b>any image or link</b> from anywhere, then paste it here — <b>Ctrl / ⌘ V</b>.</p>
     <p class="tip" id="acctLine" style="margin-top:10px"></p>
   </section>
 
@@ -649,26 +650,45 @@ window.addEventListener('paste',e=>{
       }
     }
   }
+  // no image on the clipboard — if a link was pasted, just check it (unless you're typing in a field)
+  const ae=document.activeElement;
+  if(ae && /^(linkInput|captionInput|claimInput)$/.test(ae.id||'')) return;
+  const txt=((e.clipboardData&&e.clipboardData.getData('text'))||'').trim();
+  if(/^https?:\/\/\S+$/i.test(txt)){
+    e.preventDefault();
+    const i=$('#linkInput'); if(i) i.value=txt;
+    dropzone.classList.add('flash'); setTimeout(()=>dropzone.classList.remove('flash'),500);
+    checkLink();
+  }
 });
 
 /* ----- click-to-paste button: reads the image off the clipboard (no keyboard needed) ----- */
 async function pasteFromClipboard(){
-  if(!navigator.clipboard || !navigator.clipboard.read){ alert('Your browser can’t click-to-paste. Press Ctrl+V instead.'); return; }
-  try{
-    const items=await navigator.clipboard.read();
-    for(const item of items){
-      const type=item.types.find(t=>t.startsWith('image/'));
-      if(type){
-        const blob=await item.getType(type);
-        dropzone.classList.add('flash'); setTimeout(()=>dropzone.classList.remove('flash'),500);
-        handleFile(new File([blob],'pasted-image',{type}));
-        return;
+  // 1) an image on the clipboard?
+  if(navigator.clipboard && navigator.clipboard.read){
+    try{
+      const items=await navigator.clipboard.read();
+      for(const item of items){
+        const type=item.types.find(t=>t.startsWith('image/'));
+        if(type){
+          const blob=await item.getType(type);
+          dropzone.classList.add('flash'); setTimeout(()=>dropzone.classList.remove('flash'),500);
+          handleFile(new File([blob],'pasted-image',{type}));
+          return;
+        }
       }
-    }
-    alert('No image on your clipboard yet.\n\nRight-click an image → “Copy image” first, then tap Paste.');
-  }catch(_){
-    alert('Couldn’t read the clipboard. Press Ctrl+V instead, or allow clipboard access when your browser asks.');
+    }catch(_){}
   }
+  // 2) otherwise a copied link?
+  try{
+    const txt=((await navigator.clipboard.readText())||'').trim();
+    if(/^https?:\/\/\S+$/i.test(txt)){
+      const i=$('#linkInput'); if(i) i.value=txt;
+      dropzone.classList.add('flash'); setTimeout(()=>dropzone.classList.remove('flash'),500);
+      checkLink(); return;
+    }
+  }catch(_){}
+  alert('Copy an image or a link first, then tap Paste (or press Ctrl+V).');
 }
 $('#pasteBtn').addEventListener('click',pasteFromClipboard);
 async function checkLink(){

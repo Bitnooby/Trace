@@ -526,7 +526,7 @@ app.get('/check/:id', async (req, res) => {
 
 function page(title, body, base, og) {
   return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1"/><title>${title}</title>${og||''}
+  <meta name="viewport" content="width=device-width,initial-scale=1"/><title>${title}</title><link rel="icon" type="image/svg+xml" href="/favicon.svg"/>${og||''}
   <style>
     :root{--ink:#131722;--g:#586273;--line:#E6EAF0;--paper:#F4F6F9;--signal:#0B6E6E;--ok:#1C8A57;--warn:#B0720B;--ai:#5B4BC4;--srv:#41507E}
     *{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font-family:Inter,system-ui,sans-serif;line-height:1.5}
