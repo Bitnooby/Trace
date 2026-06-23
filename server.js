@@ -250,7 +250,7 @@ app.post('/api/publish', upload.single('image'), async (req, res) => {
       claimOut = { title: claim.title || '', description: claim.description || '', source: claim.source || '', mismatch };
     }
 
-    const report = { id, sha256: sha, createdAt: Date.now(), findings, read, reverse, reverseCached, fact, prov: (req.body.prov || null), claim: claimOut, hasImage: !!req.file };
+    const report = { id, sha256: sha, createdAt: Date.now(), findings, read, reverse, reverseCached, fact, aiRead, prov: (req.body.prov || null), claim: claimOut, hasImage: !!req.file };
     await putReport(id, report);
     res.json({ id, reverse, fact, claim: claimOut, aiRead, quota: { used: await quotaGet(rid), limit, tier: acct.tier } });
   } catch (e) {
@@ -459,7 +459,7 @@ app.get('/check/:id', async (req, res) => {
 
   const esc = t => (t == null ? '' : String(t)).replace(/[<>&"]/g, c => ({ '<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;' }[c]));
   // render stored file-checks, but skip the two cross-check placeholders — we paint authoritative versions below
-  const skip = new Set(['Where it appears', 'Fact-check record', 'The claim']);
+  const skip = new Set(['Where it appears', 'Fact-check record', 'The claim', 'AI vision read']);
   const rows = (r.findings || []).filter(f => !f.section && !skip.has(f.name)).map(f =>
     `<div class="row"><div><div class="n">${esc(f.name)}</div><div class="rd">${esc(f.read)}</div></div><span class="st st-${f.ic}">${esc((f.state||[])[1]||'')}</span></div>`
   ).join('');
@@ -494,6 +494,10 @@ app.get('/check/:id', async (req, res) => {
     } else {
       web += `<div class="row"><div><div class="n">Fact-check record</div><div class="rd">No published fact-check matched this image — no debunk is on record, which is not the same as "verified true."</div></div><span class="st st-present">No debunk</span></div>`;
     }
+  }
+
+  if (r.aiRead && r.aiRead.text) {
+    web += `<div class="row"><div><div class="n">AI vision read</div><div class="rd">${esc(r.aiRead.text)}<br><span class="dim">AI vision · ${esc(r.aiRead.model || r.aiRead.provider || '')} — one model’s read, weighed with the evidence.</span></div></div><span class="st st-ai">${esc(r.aiRead.tierLabel || 'AI')}</span></div>`;
   }
 
   // CONSENSUS — weigh provenance + where-it-appears + fact-check into one honest read
