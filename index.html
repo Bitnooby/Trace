@@ -768,7 +768,15 @@ async function checkClaim(){
   const btn=$('#claimBtn'); const lab=btn.textContent; btn.textContent='Checking…'; btn.disabled=true;
   try{
     const r=await fetch(base+'/api/check-claim',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:t})});
-    c
+    const j=await r.json();
+    if(j&&j.read){ out.innerHTML=claimBanner(j.read)+sourceList(j.sources); }
+    else out.innerHTML='<p class="tip">'+esc((j&&j.error)||'Could not check that claim.')+'</p>';
+  }catch(_){ out.innerHTML='<p class="tip">Could not reach the server.</p>'; }
+  finally{ btn.textContent=lab; btn.disabled=false; }
+}
+$('#claimBtn').addEventListener('click',checkClaim);
+$('#claimInput').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();checkClaim();}});
+
 /* iOS gives no install prompt — show a gentle hint on iPhone/iPad Safari */
 (function(){
   try{
