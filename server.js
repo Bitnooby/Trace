@@ -133,6 +133,18 @@ const billing = require('./billing')({ redisOn, redisCmd, readCookie });
 const claims  = require('./claims')({ SERPAPI_KEY, FACTCHECK_KEY });
 const video   = require('./video')({ SERPAPI_KEY, putImage });
 const ai      = require('./ai')({ redisOn, redisCmd });
+async function meteredGate(name, req, res, next) {
+  if (!(await allow(name, clientIp(req), RL_PUBLISH.max, RL_PUBLISH.win)))
+    return res.status(429).json({ error: 'Too many checks right now — give it a moment.' });
+  const rid = deviceId(req, res);
+  const acct = await billing.tierOf(req);
+  const limit = acct.tier === 'pro' ? billing.PRO_DAILY : FREE_DAILY;
+  if ((await quotaGet(rid)) >= limit) {
+    return res.json({ limited: true, read: { eyebrow: 'Consensus — the evidence, weighed', level: 'scrutinize', badge: 'Free limit reached', line: 'You have used your free checks for today — sign in / upgrade to keep checking.' }, frames: [], sources: { items: [], domains: [] } });
+  }
+  res.on('finish', () => { if (res.statusCode === 200) quotaInc(rid).catch(() => {}); });
+  next();
+}
 
 const shortId  = sha => (sha ? sha.slice(0, 10) : crypto.randomBytes(5).toString('hex'));
 
@@ -581,17 +593,9 @@ function page(title, body, base, og) {
 }
 
 billing.mount(app, express);
-app.use('/api/check-claim', async (req, res, next) => {
-  if (!(await allow('claim', clientIp(req), RL_PUBLISH.max, RL_PUBLISH.win)))
-    return res.status(429).json({ error: 'Too many checks right now — give it a moment.' });
-  next();
-});
+app.use('/api/check-claim', (req, res, next) => meteredGate('claim', req, res, next));
 claims.mount(app);
-app.use('/api/check-video', async (req, res, next) => {
-  if (!(await allow('video', clientIp(req), RL_PUBLISH.max, RL_PUBLISH.win)))
-    return res.status(429).json({ error: 'Too many video checks right now — give it a moment.' });
-  next();
-});
+app.use('/api/check-video', (req, res, next) => meteredGate('video', req, res, next));
 video.mount(app, uploadVideo);
 
 app.listen(PORT, () => console.log(`Relity running on http://localhost:${PORT}`));

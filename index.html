@@ -779,7 +779,7 @@ async function checkClaim(){
     if(j&&j.read){ out.innerHTML=claimBanner(j.read)+sourceList(j.sources); }
     else out.innerHTML='<p class="tip">'+esc((j&&j.error)||'Could not check that claim.')+'</p>';
   }catch(_){ out.innerHTML='<p class="tip">Could not reach the server.</p>'; }
-  finally{ btn.textContent=lab; btn.disabled=false; }
+  finally{ btn.textContent=lab; btn.disabled=false; try{refreshMe();}catch(_){} }
 }
 $('#claimBtn').addEventListener('click',checkClaim);
 $('#claimInput').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();checkClaim();}});
