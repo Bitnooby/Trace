@@ -197,8 +197,8 @@
     <div class="dropzone" id="dropzone" tabindex="0" role="button" aria-label="Drop or browse for an image">
       <svg class="dz-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2.5"/><circle cx="8.5" cy="8.5" r="1.6"/><path d="m21 15-4.5-4.5L5 21"/></svg>
       <div class="dz-title">Paste, drop, or browse</div>
-      <div class="dz-sub">or click to browse · JPEG, PNG, WebP</div>
-      <input type="file" id="fileInput" accept="image/*" hidden />
+      <div class="dz-sub">or click to browse · JPEG, PNG, WebP · or a short video</div>
+      <input type="file" id="fileInput" accept="image/*,video/*" hidden />
     </div>
 
     <div class="alt">
@@ -221,6 +221,7 @@
       <button class="btn ghost" id="claimBtn" type="button">Check claim</button>
     </div>
     <div id="claimOut" style="margin-top:14px"></div>
+    <div id="videoOut" style="margin-top:14px"></div>
 
     <p class="reassure">No sign-up · your image never leaves your device for the file checks</p>
     <p class="tip">Copy <b>any image or link</b> from anywhere, then paste it here — <b>Ctrl / ⌘ V</b>.</p>
@@ -637,7 +638,9 @@ async function publishToServer(file,hash,localFindings,readObj,sig,claim){
 
 /* wiring */
 function handleFile(file, claim){
-  if(!file||!file.type.startsWith('image/')){alert('Please choose an image file (JPEG, PNG, or WebP).');return;}
+  if(!file) return;
+  if(file.type && file.type.startsWith('video/')){ checkVideo(file); return; }
+  if(!file.type.startsWith('image/')){ alert('Please choose an image or a video file.'); return; }
   if(!claim){ const capEl=$('#captionInput'); const cap=capEl?capEl.value.trim():''; if(cap) claim={title:cap, source:'the caption you gave'}; }
   rowsEl.classList.remove('revealed'); analyze(file, claim||null);
 }
@@ -780,6 +783,36 @@ async function checkClaim(){
 }
 $('#claimBtn').addEventListener('click',checkClaim);
 $('#claimInput').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();checkClaim();}});
+
+/* ----- video: server-side keyframe extraction + footage report ----- */
+function renderVideo(j){
+  const out=$('#videoOut'); if(!out) return;
+  if(!j||j.error){ out.innerHTML='<p class="tip">'+esc((j&&j.error)||'Could not check that video.')+'</p>'; return; }
+  const rd=j.read||{};
+  const cls={debunk:'r-red',scrutinize:'r-amber',photo:'r-blue',verified:'r-green'}[rd.level]||'r-amber';
+  let frames='';
+  if(j.frames&&j.frames.length){ frames='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">'+j.frames.map(function(f){return '<img src="'+esc(f.img)+'" alt="keyframe" style="width:92px;height:92px;object-fit:cover;border-radius:8px;border:1px solid var(--line)"/>';}).join('')+'</div>'; }
+  let where='';
+  const w=j.where||{};
+  if(w.domains&&w.domains.length){ where='<div class="card" style="margin-top:12px"><div class="sec">Where the footage appears</div><div class="row"><div class="row-main"><div class="row-read">Frames found on: '+esc(w.domains.slice(0,6).join(', '))+((w.earliest&&w.earliest.date)?('. Earliest dated copy: '+esc(w.earliest.date)):'')+'</div></div></div></div>'; }
+  out.innerHTML='<div class="read-banner '+cls+'" style="border-radius:13px"><div class="rb-eyebrow">'+esc(rd.eyebrow||'Consensus — the evidence, weighed')+'</div><div class="rb-badge"><span class="dotb"></span>'+esc(rd.badge||'')+'</div><div class="rb-line">'+esc(rd.line||'')+'</div></div>'+frames+where;
+}
+async function checkVideo(file){
+  const out=$('#videoOut'); const base=apiBase();
+  if(!out) return;
+  if(!base){ out.innerHTML='<p class="tip">Video checks need the live server — open relity.ai.</p>'; return; }
+  if(file.size>30*1024*1024){ out.innerHTML='<p class="tip">That video is over 30MB — try a shorter clip.</p>'; return; }
+  out.innerHTML='<p class="tip">Extracting keyframes and checking the footage… this can take a few seconds.</p>';
+  try{ out.scrollIntoView({behavior:'smooth',block:'nearest'}); }catch(_){}
+  try{
+    const fd=new FormData(); fd.append('video',file);
+    const r=await fetch(base+'/api/check-video',{method:'POST',body:fd});
+    const j=await r.json();
+    renderVideo(j);
+    try{ refreshMe(); }catch(_){}
+  }catch(_){ out.innerHTML='<p class="tip">Could not reach the server for the video check.</p>'; }
+}
+
 
 /* iOS gives no install prompt — show a gentle hint on iPhone/iPad Safari */
 (function(){
