@@ -724,11 +724,14 @@ $('#copyBtn').addEventListener('click',()=>{const t=$('#shareUrl').textContent;n
 /* badge reflects mode */
 (function(){ const b=$('#modeBadge'); if(apiBase()&&!location.protocol.startsWith('file')) { /* served */ } })();
 
-/* Browser-extension entry point: opened as ?check=<image url> → run the report automatically */
+/* Browser-extension entry point: ?check=<image/link/page url> or ?claim=<text> → auto-run */
 (function(){
   try{
-    const c=new URLSearchParams(location.search).get('check');
-    if(c){ const i=$('#linkInput'); if(i){ i.value=c; checkLink(); } }
+    const q=new URLSearchParams(location.search);
+    const c=q.get('check');
+    if(c){ const i=$('#linkInput'); if(i){ i.value=c; checkLink(); } return; }
+    const cl=q.get('claim');
+    if(cl){ const i=$('#claimInput'); if(i){ i.value=cl; checkClaim(); } }
   }catch(_){}
 })();
 
