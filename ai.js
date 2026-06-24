@@ -10,13 +10,22 @@ module.exports = function ai({ redisOn, redisCmd } = {}) {
     (caption ? 'whether the image plausibly matches this caption: "' + caption + '".' : 'whether anything looks internally inconsistent.') +
     ' Describe only what is visible; never assert facts you cannot see; do NOT give a final real/fake verdict — you are one signal among several.' +
     (evidence ? ' Context: reverse image search found it on ' + evidence + '.' : '');
+  const GEMINI_MODELS = [GEMINI_MODEL, 'gemini-flash-latest', 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'].filter((v, i, a) => v && a.indexOf(v) === i);
   async function gemini(b64, mime, p) {
-    const u = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_KEY}`;
-    const r = await fetch(u, { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contents: [{ parts: [{ text: p }, { inline_data: { mime_type: mime, data: b64 } }] }], generationConfig: { maxOutputTokens: 220, temperature: 0.2 } }) });
-    const j = await r.json();
-    if (!r.ok) throw new Error('gemini ' + r.status);
-    return ((((j.candidates || [])[0] || {}).content || {}).parts || [{}])[0].text || '';
+    let lastErr = 'gemini: no model worked';
+    for (const model of GEMINI_MODELS) {
+      try {
+        const u = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_KEY}`;
+        const r = await fetch(u, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ contents: [{ parts: [{ text: p }, { inline_data: { mime_type: mime, data: b64 } }] }], generationConfig: { maxOutputTokens: 220, temperature: 0.2 } }) });
+        const j = await r.json();
+        if (!r.ok) { lastErr = 'gemini ' + model + ' HTTP ' + r.status + ' ' + JSON.stringify((j && j.error && j.error.message) || '').slice(0, 140); continue; }
+        const t = ((((j.candidates || [])[0] || {}).content || {}).parts || [{}])[0].text || '';
+        if (t) return t;
+        lastErr = 'gemini ' + model + ' empty';
+      } catch (e) { lastErr = 'gemini ' + model + ' ' + e.message; }
+    }
+    throw new Error(lastErr);
   }
   async function anthropic(b64, mime, p) {
     const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST',
