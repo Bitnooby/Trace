@@ -167,5 +167,5 @@ module.exports = function billing({ redisOn, redisCmd, readCookie }) {
     });
   }
 
-  return { tierOf, isPro, setPro, getEmail, sessionCookie, mount, PRO_DAILY, configured: on };
+  return { tierOf, isPro, setPro, getEmail, sessionCookie, mount, PRO_DAILY, configured: on, loginReady: loginOn };
 };

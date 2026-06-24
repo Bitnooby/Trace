@@ -292,7 +292,7 @@ app.get('/api/me', async (req, res) => {
   const limit = acct.tier === 'pro' ? billing.PRO_DAILY : FREE_DAILY;
   const used = await quotaGet(id);
   const reset = new Date(); reset.setUTCHours(24, 0, 0, 0);
-  res.json({ tier: acct.tier, email: acct.email || null, used, limit, remaining: Math.max(0, limit - used), resetsAt: reset.toISOString() });
+  res.json({ tier: acct.tier, email: acct.email || null, used, limit, remaining: Math.max(0, limit - used), resetsAt: reset.toISOString(), loginReady: !!billing.loginReady });
 });
 
 /* ---------- fetch an image from a pasted link ----------
@@ -491,11 +491,11 @@ app.get('/check/:id', async (req, res) => {
       web += `<div class="row"><div><div class="n">Where it appears</div><div class="rd">${esc(r.reverse.note||'The web-appearance check couldn’t run for this image.')} That evidence is <strong>missing</strong> for this report — which is not the same as the image appearing nowhere.</div></div><span class="st st-present">Unavailable</span></div>`;
     } else {
       const e = r.reverse.earliest;
-      const doms = (r.reverse.matches || []).slice(0, 5).map(m => `<a href="${esc(m.link || '#')}" target="_blank" rel="noopener" style="color:var(--signal)">${esc(m.source || ((r.reverse.domains || [])[0]) || 'source')}</a>`).join(' · ');
+      const doms = (r.reverse.domains || []).slice(0, 5).join(', ');
       const interp = interpretDomains(r.reverse.domains);
       const vintage = vintageYear(e);
       const st = interp.examined ? 'st-caution' : (interp.flag === 'ai' ? 'st-ai' : 'st-signal');
-      web += `<div class="row"><div><div class="n">Where it appears</div><div class="rd">Where this image appears across the web.${interp.found?' '+esc(interp.text):''}<br><span class="dim">${r.reverse.count?`Seen across ${spreadPhrase(r.reverse.count)} online.`:'Not found on other public sites we could check.'}${doms?` Sources include: ${doms}${(r.reverse.count||0)>4?' …and more':''}.`:''}${e?` Earliest dated copy: ${esc(e.source||'')} (${esc(e.date||'')})${vintage?` · online since ${vintage}`:''}.`:''}</span></div></div><span class="st ${st}">${(r.reverse.count||0)>0?'Found':'Checked'}</span></div>`;
+      web += `<div class="row"><div><div class="n">Where it appears</div><div class="rd">Where this image appears across the web.${interp.found?' '+esc(interp.text):''}<br><span class="dim">${r.reverse.count?`Seen across ${spreadPhrase(r.reverse.count)} online.`:'Not found on other public sites we could check.'}${doms?` Found across multiple sources: ${doms}${(r.reverse.count||0)>4?' …and more':''}.`:''}${e?` Earliest dated copy: ${esc(e.source||'')} (${esc(e.date||'')})${vintage?` · online since ${vintage}`:''}.`:''}</span></div></div><span class="st ${st}">${(r.reverse.count||0)>0?'Found':'Checked'}</span></div>`;
     }
   }
   if (r.fact?.connected) {
