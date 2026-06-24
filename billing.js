@@ -26,6 +26,9 @@ module.exports = function billing({ redisOn, redisCmd, readCookie }) {
   const WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || '';
   const PRO_DAILY      = Number.isFinite(+process.env.RELITY_PRO_DAILY) ? +process.env.RELITY_PRO_DAILY : 1000;
   const on = !!(STRIPE_SECRET && STRIPE_PRICE);
+  const RESEND_KEY = process.env.RESEND_API_KEY || '';
+  const MAIL_FROM  = process.env.RELITY_MAIL_FROM || 'Relity <noreply@relity.ai>';
+  const loginOn    = !!RESEND_KEY;
 
   let stripe = null;
   if (STRIPE_SECRET) { try { stripe = require('stripe')(STRIPE_SECRET); } catch (e) { console.error('stripe lib not installed:', e.message); } }
@@ -47,6 +50,23 @@ module.exports = function billing({ redisOn, redisCmd, readCookie }) {
     const p = b64(email);
     return `ruid=${p}.${sig(p)}; Path=/; Max-Age=31536000; HttpOnly; SameSite=Lax; Secure`;
   }
+
+  /* ---- magic-link email login (passwordless) ---- */
+  async function sendMail(to, subject, html) {
+    const r = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${RESEND_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from: MAIL_FROM, to: [to], subject, html })
+    });
+    if (!r.ok) throw new Error('resend ' + r.status + ' ' + (await r.text().catch(() => '')).slice(0, 160));
+  }
+  const loginEmailHtml = (link) =>
+    `<div style="font-family:system-ui,Segoe UI,Arial,sans-serif;max-width:460px;margin:auto;padding:24px;color:#111">` +
+    `<h2 style="margin:0 0 6px">Sign in to Relity</h2>` +
+    `<p style="color:#555;margin:0 0 18px">Click below to sign in. This link expires in 30 minutes.</p>` +
+    `<p><a href="${link}" style="display:inline-block;background:#111;color:#fff;text-decoration:none;padding:11px 18px;border-radius:8px;font-weight:600">Sign in to Relity</a></p>` +
+    `<p style="color:#999;font-size:12px;margin-top:18px">If you didn’t request this, you can ignore it. — Relity · evidence, not verdicts</p>` +
+    `</div>`;
 
   /* ---- Pro state (Redis when available, else in-memory) ---- */
   async function isPro(email) {
@@ -100,6 +120,32 @@ module.exports = function billing({ redisOn, redisCmd, readCookie }) {
     app.post('/api/signout', (req, res) => {
       res.setHeader('Set-Cookie', 'ruid=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax');
       res.json({ ok: true });
+    });
+
+    // Magic-link login: email a one-time sign-in link.
+    app.post('/api/login', async (req, res) => {
+      const email = String((req.body && req.body.email) || '').trim().toLowerCase();
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return res.status(400).json({ error: 'Enter a valid email.' });
+      if (!loginOn) return res.status(503).json({ error: 'Email login isn’t set up yet.' });
+      try {
+        const payload = b64(JSON.stringify({ e: email, x: Date.now() + 30 * 60 * 1000 }));
+        const tok = `${payload}.${sig(payload)}`;
+        const base = `${req.protocol}://${req.get('host')}`;
+        const link = `${base}/api/auth?token=${encodeURIComponent(tok)}`;
+        await sendMail(email, 'Your Relity sign-in link', loginEmailHtml(link));
+        res.json({ ok: true });
+      } catch (e) { console.error('login:', e.message); res.status(500).json({ error: 'Could not send the link. Try again shortly.' }); }
+    });
+
+    // Click the emailed link -> verify token, sign in on this device, bounce home.
+    app.get('/api/auth', async (req, res) => {
+      const tok = (req.query.token || '').toString();
+      const i = tok.lastIndexOf('.');
+      let o = null;
+      if (i > 1 && sig(tok.slice(0, i)) === tok.slice(i + 1)) { try { o = JSON.parse(unb64(tok.slice(0, i))); } catch {} }
+      if (!o || !o.e || !o.x || Date.now() > o.x) return res.redirect(302, '/?login=expired');
+      res.setHeader('Set-Cookie', sessionCookie(o.e));
+      res.redirect(302, '/?login=ok');
     });
 
     // Stripe webhook — keep Pro in sync with the subscription lifecycle. Needs the RAW body.

@@ -236,6 +236,11 @@
     <p class="reassure">No sign-up · your image never leaves your device for the file checks</p>
     <p class="tip">Copy <b>any image or link</b> from anywhere, then paste it here — <b>Ctrl / ⌘ V</b>.</p>
     <p class="tip" id="acctLine" style="margin-top:10px"></p>
+    <div id="loginBox" style="display:none;justify-content:center;gap:6px;margin-top:8px">
+      <input type="email" id="loginEmail" placeholder="you@email.com" style="max-width:230px" />
+      <button class="btn ghost" id="loginSend" type="button">Email me a link</button>
+    </div>
+    <p class="tip" id="loginMsg" style="display:none;margin-top:6px"></p>
     <p class="tip" id="iosHint" style="display:none;margin-top:8px"></p>
   </section>
 
@@ -841,12 +846,35 @@ async function refreshMe(){
   const base=apiBase(); const el=$('#acctLine'); if(!base||!el) return;
   try{
     const m=await (await fetch(base+'/api/me')).json();
-    if(m.tier==='pro'){ el.innerHTML='✓ <b>Relity Pro</b> — unlimited web cross-checks'; }
-    else{
-      el.innerHTML=`${m.remaining} of ${m.limit} free web-checks left today · <a href="#" id="upBtn" style="color:var(--signal);font-weight:600;text-decoration:none">Upgrade</a>`;
+    if(m.tier==='pro'){
+      el.innerHTML=`✓ <b>Relity Pro</b> — unlimited web cross-checks${m.email?` · <span style="opacity:.75">${esc(m.email)}</span>`:''} · <a href="#" id="outBtn" style="color:var(--signal);font-weight:600;text-decoration:none">Log out</a>`;
+    } else {
+      el.innerHTML=`${m.remaining} of ${m.limit} free web-checks left today · <a href="#" id="upBtn" style="color:var(--signal);font-weight:600;text-decoration:none">Upgrade</a> · <a href="#" id="inBtn" style="color:var(--signal);font-weight:600;text-decoration:none">Log in</a>`;
       const u=$('#upBtn'); if(u) u.addEventListener('click',ev=>{ev.preventDefault();startUpgrade();});
+      const i=$('#inBtn'); if(i) i.addEventListener('click',ev=>{ev.preventDefault();toggleLogin();});
     }
+    const o=$('#outBtn'); if(o) o.addEventListener('click',ev=>{ev.preventDefault();doSignout();});
   }catch(_){}
+}
+function toggleLogin(){
+  const b=$('#loginBox'); if(!b) return;
+  const open=b.style.display!=='none'; b.style.display=open?'none':'flex';
+  if(!open){ const e=$('#loginEmail'); if(e) e.focus(); }
+}
+async function sendLogin(){
+  const base=apiBase(); const e=$('#loginEmail'); const msg=$('#loginMsg');
+  const email=((e&&e.value)||'').trim();
+  if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){ if(msg){msg.style.display='block';msg.textContent='Enter a valid email.';} return; }
+  if(msg){ msg.style.display='block'; msg.textContent='Sending…'; }
+  try{
+    const j=await (await fetch(base+'/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email})})).json();
+    if(j&&j.ok){ if(msg) msg.textContent='Check your email for a sign-in link.'; const lb=$('#loginBox'); if(lb) lb.style.display='none'; }
+    else if(msg) msg.textContent=(j&&j.error)||'Could not send the link.';
+  }catch(_){ if(msg) msg.textContent='Could not send the link. Try again.'; }
+}
+async function doSignout(){
+  const base=apiBase(); try{ await fetch(base+'/api/signout',{method:'POST'}); }catch(_){}
+  refreshMe();
 }
 async function startUpgrade(){
   const base=apiBase(); if(!base){ alert('Open the live site (relity.ai) to upgrade.'); return; }
@@ -861,7 +889,11 @@ async function startUpgrade(){
       await fetch(apiBase()+'/api/claim?session_id='+encodeURIComponent(p.get('session_id'))).catch(()=>{});
       history.replaceState({},'',location.pathname);
     }
+    const lg=p.get('login');
+    if(lg){ const msg=$('#loginMsg'); if(msg){ msg.style.display='block'; msg.textContent = lg==='ok' ? 'You’re signed in.' : 'That link expired — request a new one.'; } history.replaceState({},'',location.pathname); }
   }catch(_){}
+  const ls=$('#loginSend'); if(ls) ls.addEventListener('click',sendLogin);
+  const le=$('#loginEmail'); if(le) le.addEventListener('keydown',ev=>{ if(ev.key==='Enter'){ ev.preventDefault(); sendLogin(); } });
   refreshMe();
 })();
 </script>
