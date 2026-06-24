@@ -14,16 +14,22 @@ module.exports = function ai({ redisOn, redisCmd } = {}) {
   async function gemini(b64, mime, p) {
     let lastErr = 'gemini: no model worked';
     for (const model of GEMINI_MODELS) {
-      try {
-        const u = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_KEY}`;
-        const r = await fetch(u, { method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ contents: [{ parts: [{ text: p }, { inline_data: { mime_type: mime, data: b64 } }] }], generationConfig: { maxOutputTokens: 220, temperature: 0.2 } }) });
-        const j = await r.json();
-        if (!r.ok) { lastErr = 'gemini ' + model + ' HTTP ' + r.status + ' ' + JSON.stringify((j && j.error && j.error.message) || '').slice(0, 140); continue; }
-        const t = ((((j.candidates || [])[0] || {}).content || {}).parts || [{}])[0].text || '';
-        if (t) return t;
-        lastErr = 'gemini ' + model + ' empty';
-      } catch (e) { lastErr = 'gemini ' + model + ' ' + e.message; }
+      // Prefer thinking OFF (faster/cheaper + no budget eaten by hidden reasoning, which truncates the answer).
+      // If a model rejects thinkingConfig, retry it plain. maxOutputTokens is high enough to never cut the read short either way.
+      for (const noThink of [true, false]) {
+        try {
+          const gen = { maxOutputTokens: 1024, temperature: 0.2 };
+          if (noThink) gen.thinkingConfig = { thinkingBudget: 0 };
+          const u = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_KEY}`;
+          const r = await fetch(u, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ contents: [{ parts: [{ text: p }, { inline_data: { mime_type: mime, data: b64 } }] }], generationConfig: gen }) });
+          const j = await r.json();
+          if (!r.ok) { lastErr = 'gemini ' + model + ' HTTP ' + r.status + ' ' + JSON.stringify((j && j.error && j.error.message) || '').slice(0, 140); continue; }
+          const t = ((((j.candidates || [])[0] || {}).content || {}).parts || [{}])[0].text || '';
+          if (t) return t;
+          lastErr = 'gemini ' + model + ' empty';
+        } catch (e) { lastErr = 'gemini ' + model + ' ' + e.message; }
+      }
     }
     throw new Error(lastErr);
   }
