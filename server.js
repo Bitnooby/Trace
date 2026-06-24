@@ -509,7 +509,7 @@ app.get('/check/:id', async (req, res) => {
   }
 
   if (r.aiRead && r.aiRead.text) {
-    web += `<div class="row"><div><div class="n">AI vision read</div><div class="rd">${esc(r.aiRead.text)}<br><span class="dim">AI vision · ${esc(r.aiRead.model || r.aiRead.provider || '')} — one model’s read, weighed with the evidence.</span></div></div><span class="st st-ai">${esc(r.aiRead.tierLabel || 'AI')}</span></div>`;
+    web += `<div class="row"><div><div class="n">AI vision read</div><div class="rd" style="white-space:pre-line">${esc(r.aiRead.text)}<br><span class="dim">AI vision · ${esc(r.aiRead.model || r.aiRead.provider || '')} — one model’s read, weighed with the evidence.</span></div></div><span class="st st-ai">${esc(r.aiRead.tierLabel || 'AI')}</span></div>`;
   }
 
   // CONSENSUS — weigh provenance + where-it-appears + fact-check into one honest read

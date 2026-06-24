@@ -31,19 +31,28 @@ module.exports = function ai({ redisOn, redisCmd } = {}) {
   async function cacheSet(k, v) { if (redisOn) { try { await redisCmd(['SET', k, JSON.stringify(v), 'EX', 60 * 60 * 24 * 30]); return; } catch {} } mem.set(k, v); }
   async function analyzeImage({ tier, sha, buffer, mime, caption, evidence }) {
     if (!buffer) return null;
-    const usePro = tier === 'pro' && ANTH_KEY;
-    const provider = usePro ? 'anthropic' : (GEMINI_KEY ? 'gemini' : null);
-    if (!provider) return null;
-    const key = `relity:ai:${provider}:${sha || 'x'}`;
-    if (sha) { const c = await cacheGet(key); if (c) return c; }
+    const isPro = tier === 'pro';
+    const providers = [];
+    if (isPro && ANTH_KEY) providers.push('anthropic');
+    if (GEMINI_KEY) providers.push('gemini');
+    if (!providers.length) return null;
+    const ckey = `relity:ai:${providers.join('+')}:${sha || 'x'}`;
+    if (sha) { const c = await cacheGet(ckey); if (c) return c; }
     const m = (mime && mime.startsWith('image/')) ? mime : 'image/jpeg';
     const b64 = buffer.toString('base64');
-    let text;
-    try { text = (usePro ? await anthropic(b64, m, prompt(caption, evidence)) : await gemini(b64, m, prompt(caption, evidence))).trim(); }
-    catch (e) { console.error('ai vision:', e.message); return null; }
-    if (!text) return null;
-    const out = { provider, model: usePro ? ANTH_MODEL : GEMINI_MODEL, tierLabel: usePro ? 'Claude · Pro' : 'Gemini', text };
-    if (sha) await cacheSet(key, out);
+    const p = prompt(caption, evidence);
+    const reads = await Promise.all(providers.map(async pv => {
+      try {
+        const t = (pv === 'anthropic' ? await anthropic(b64, m, p) : await gemini(b64, m, p)).trim();
+        return t ? { label: pv === 'anthropic' ? 'Claude' : 'Gemini', model: pv === 'anthropic' ? ANTH_MODEL : GEMINI_MODEL, text: t } : null;
+      } catch (e) { console.error('ai', pv, e.message); return null; }
+    }));
+    const ok = reads.filter(Boolean);
+    if (!ok.length) return null;
+    let out;
+    if (ok.length === 1) out = { provider: ok[0].label.toLowerCase(), model: ok[0].model, tierLabel: ok[0].label + (isPro ? ' · Pro' : ''), text: ok[0].text };
+    else out = { provider: 'multi', model: ok.map(r => r.model).join(' + '), tierLabel: ok.map(r => r.label).join(' + ') + ' · Pro', text: ok.map(r => r.label + ' —\n' + r.text).join('\n\n') };
+    if (sha) await cacheSet(ckey, out);
     return out;
   }
   return { analyzeImage, configured: !!(GEMINI_KEY || ANTH_KEY) };
