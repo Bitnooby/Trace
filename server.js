@@ -545,6 +545,30 @@ app.get('/check/:id', async (req, res) => {
       ${rows}
     </div>
     <a class="cta" href="${base}/">Check your own image →</a>
+    <button id="cardBtn" class="cta" style="margin-top:10px;cursor:pointer">📸 Save a share card</button>
+    <canvas id="rcard" width="1200" height="630" style="display:none"></canvas>
+    <script>
+    (function(){
+      var RC=${JSON.stringify({ badge: rd.badge||'', line: rd.line||'', level: rd.level||'scrutinize', img: r.hasImage ? base + '/img/' + r.id : '', url: base + '/check/' + r.id }).replace(/</g, '\\u003c')};
+      var btn=document.getElementById('cardBtn'); if(!btn) return;
+      btn.onclick=function(){
+        var cv=document.getElementById('rcard'), x=cv.getContext('2d'), W=1200, H=630;
+        var g=x.createLinearGradient(0,0,0,H); g.addColorStop(0,'#0B6E6E'); g.addColorStop(1,'#06201f'); x.fillStyle=g; x.fillRect(0,0,W,H);
+        var colors={debunk:'#ff6b6b',ai:'#ff6b6b',verified:'#36d399',photo:'#5fb0ff',scrutinize:'#f4c152'};
+        function rr(X,Y,w,h,r){ x.beginPath(); x.moveTo(X+r,Y); x.arcTo(X+w,Y,X+w,Y+h,r); x.arcTo(X+w,Y+h,X,Y+h,r); x.arcTo(X,Y+h,X,Y,r); x.arcTo(X,Y,X+w,Y,r); x.closePath(); }
+        function wrap(t,X,Y,maxW,lh,maxLines){ var words=String(t||'').split(' '), line='', yy=Y, n=0; for(var i=0;i<words.length;i++){ var test=line?line+' '+words[i]:words[i]; if(x.measureText(test).width>maxW && line){ x.fillText(line,X,yy); yy+=lh; line=words[i]; n++; if(maxLines&&n>=maxLines){ x.fillText(line+'…',X,yy); return; } } else line=test; } x.fillText(line,X,yy); }
+        function draw(){
+          var tw = RC.img ? 600 : 1080;
+          x.fillStyle='rgba(255,255,255,.85)'; x.font='600 27px Arial,Helvetica,sans-serif'; x.fillText('RELITY  —  evidence, not verdicts', 56, 72);
+          x.fillStyle=colors[RC.level]||'#f4c152'; x.font='bold 56px Arial,Helvetica,sans-serif'; wrap(RC.badge,56,172,tw,60,2);
+          x.fillStyle='#eafffb'; x.font='28px Arial,Helvetica,sans-serif'; wrap(RC.line,56,300,tw,38,7);
+          x.fillStyle='#7be8e8'; x.font='bold 30px Arial,Helvetica,sans-serif'; x.fillText('relity.ai', 56, H-48);
+          cv.toBlob(function(b){ if(!b) return; var a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download='relity-card.png'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(function(){URL.revokeObjectURL(a.href);},2000); }, 'image/png');
+        }
+        if(RC.img){ var im=new Image(); im.onload=function(){ var iw=440,ih=440,ix=W-iw-56,iy=(H-ih)/2; x.save(); rr(ix,iy,iw,ih,20); x.clip(); var rt=Math.max(iw/im.width,ih/im.height), dw=im.width*rt, dh=im.height*rt; x.drawImage(im,ix+(iw-dw)/2,iy+(ih-dh)/2,dw,dh); x.restore(); x.strokeStyle='rgba(255,255,255,.25)'; x.lineWidth=2; rr(ix,iy,iw,ih,20); x.stroke(); draw(); }; im.onerror=draw; im.src=RC.img; } else { draw(); }
+      };
+    })();
+    </script>
   `, base, og));
 });
 
