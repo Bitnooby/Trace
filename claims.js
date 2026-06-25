@@ -17,6 +17,7 @@
 const NEWS = ['reuters','apnews','bbc.','nytimes','washingtonpost','theguardian','cnn.','npr.org','aljazeera','bloomberg','afp.','forbes','independent.co','nbcnews','cbsnews','abcnews','usatoday','politico','axios','time.com','wsj.com'];
 const FC   = ['snopes','politifact','factcheck','fullfact','leadstories','checkyourfact','truthorfiction','altnews','boomlive','factly','africacheck','newschecker'];
 const SOCIAL = ['x.com','twitter','facebook','instagram','tiktok','reddit','youtube','youtu.be','threads.net','t.me','telegram','medium.com','substack','quora','linkedin'];
+const AUTH = ['.gov','.edu','.ac.','wikipedia.','britannica.','nature.com','science.org','sciencemag','scientificamerican','nationalgeographic','smithsonian','who.int','un.org','nih.','noaa.','nasa.','usgs.','esa.int','europa.eu','jstor.','pnas.'];
 
 module.exports = function claims({ SERPAPI_KEY = '', FACTCHECK_KEY = '', ai = null, tierOf = null } = {}) {
 
@@ -52,7 +53,7 @@ module.exports = function claims({ SERPAPI_KEY = '', FACTCHECK_KEY = '', ai = nu
   function bucket(items) {
     const d = (items || []).map(m => (m.link ? hostOf(m.link) : (m.source || '')).toLowerCase());
     const hit = arr => [...new Set(d.filter(x => arr.some(k => x.includes(k))))];
-    return { news: hit(NEWS), fc: hit(FC), social: hit(SOCIAL) };
+    return { news: hit(NEWS), fc: hit(FC), social: hit(SOCIAL), auth: hit(AUTH) };
   }
 
   function recencyClaim(t) {
@@ -63,7 +64,7 @@ module.exports = function claims({ SERPAPI_KEY = '', FACTCHECK_KEY = '', ai = nu
   }
 
   const FALSE_RE = /false|pants on fire|fake|hoax|misleading|no evidence|incorrect|debunk|unfounded|baseless/i;
-  const STOP = new Set(['the','a','an','is','are','was','were','of','in','on','to','and','or','that','this','it','its','for','with','as','at','by','be','been','has','have','had','do','does','did','no','not','will','can','could','would','should','may','might','from','about','into','than','then','there','their','they','you','your','our','but','if','so']);
+  const STOP = new Set('the a an is are was were be been being of in on to and or that this it its for with as at by from about into over under between among through during before after above below against without within across has have had do does did not no nor so too very just also even still only own same such more most some any all both each few many much other who whom whose which what when where why how here there now will would can could should may might must shall them they their you your we our us i me my he him his she her but because since until while new old said says say see seen get got make made take took went one two back way well off up down again once'.split(' '));
   const keyTokens = s => new Set(String(s || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(w => w.length > 2 && !STOP.has(w)));
   // Google's fact-check API returns loose keyword matches. Treating ANY "false"-rated result as a debunk
   // produces false "debunked" verdicts (e.g. a true "water on the Moon" claim). Only count a fact-check
@@ -74,7 +75,8 @@ module.exports = function claims({ SERPAPI_KEY = '', FACTCHECK_KEY = '', ai = nu
     return (list || []).filter(c => {
       const ct = keyTokens(c.claim);
       let overlap = 0; for (const w of q) if (ct.has(w)) overlap++;
-      return q.size <= 2 ? overlap >= q.size : overlap / q.size >= 0.5;
+      const need = q.size <= 2 ? q.size : Math.max(2, Math.ceil(q.size * 0.5));
+      return overlap >= need;
     });
   }
 
@@ -92,7 +94,8 @@ module.exports = function claims({ SERPAPI_KEY = '', FACTCHECK_KEY = '', ai = nu
       if (FALSE_RE.test(ratings)) return { eyebrow: E, level: 'debunk', badge: 'Debunked on record', line: 'A fact-check of this claim rates it false or misleading.' + cite + ' Read it in full before sharing.' };
       return { eyebrow: E, level: 'scrutinize', badge: 'On the fact-check record', line: 'Fact-checkers have addressed this claim.' + cite + ' Read their verdict before trusting it.' + recNote };
     }
-    if (b.news.length) return { eyebrow: E, level: 'photo', badge: 'Covered by news outlets', line: `Reported by reputable outlets (${b.news.slice(0,2).join(', ')}). Coverage is a real trail to read — not proof on its own.` + recNote };
+    const credible = [...new Set([...(b.news || []), ...(b.auth || [])])];
+    if (credible.length) return { eyebrow: E, level: 'photo', badge: 'Documented by credible sources', line: `Appears on reputable / authoritative sources (${credible.slice(0,3).join(', ')}). A real trail to read — not proof on its own.` + recNote };
     if (b.fc.length) return { eyebrow: E, level: 'scrutinize', badge: 'Likely fact-checked', line: `This appears on fact-checking sites (${b.fc.slice(0,2).join(', ')}) — open them and read the conclusion.` + recNote };
     if (b.social.length) return { eyebrow: E, level: 'scrutinize', badge: 'Circulating on social', line: 'Found mostly on social platforms with no news or fact-check trail — treat as unverified until a credible source confirms it.' + recNote };
     return { eyebrow: E, level: 'scrutinize', badge: 'No record found', line: 'Couldn’t find this discussed on the sources we check — unverified. Absence of a record is not proof either way.' + recNote };
