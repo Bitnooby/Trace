@@ -75,11 +75,11 @@ module.exports = function ai({ redisOn, redisCmd } = {}) {
     return ((j.content || [{}])[0].text) || '';
   }
   const claimPrompt = (text) =>
-    'You are the text-analysis layer of Relity, a media-verification tool. Decide whether the TEXT below makes a CHECKABLE FACTUAL CLAIM or is just OPINION/commentary. ' +
+    'You are the text-analysis layer of Relity, a media-verification tool. Read the TEXT (a social post, caption, or news snippet) and SEPARATE fact from opinion. ' +
     'Reply with STRICT minified JSON ONLY (no markdown, no code fence), exactly this shape: ' +
-    '{"kind":"opinion|claim|mixed","claim":"<the single most important checkable factual claim, rewritten as a concise neutral statement for a web search, or empty string if none>","note":"<one short sentence explaining your call>"} ' +
-    'Definitions: opinion = value judgments, predictions, feelings, rhetorical or unfalsifiable statements. claim = a concrete verifiable assertion of fact (who/what/when/where, numbers, events). mixed = opinion wrapped around a checkable fact. ' +
-    'Do NOT judge whether it is true; only classify and extract the factual core. ' +
+    '{"kind":"opinion|claim|mixed","claim":"<the single most important CHECKABLE factual assertion, rewritten as a concise neutral statement for a web search; empty string if there is none>","opinion":"<the poster\'s subjective take, framing, emotion or judgement, in a short phrase; empty string if none>","note":"<one short sentence explaining your call>"} ' +
+    'Definitions: opinion = value judgments, predictions, feelings, sarcasm, or unfalsifiable statements. claim = a concrete verifiable assertion of fact (who/what/when/where, numbers, events). mixed = a checkable fact wrapped in opinion or framing. ' +
+    'Put the factual core in "claim" and the subjective part in "opinion". Do NOT judge whether the claim is true; only classify and separate. ' +
     'TEXT: """' + String(text || '').slice(0, 1200) + '"""';
   async function analyzeClaim({ tier, text } = {}) {
     text = (text || '').toString().trim();
@@ -96,7 +96,7 @@ module.exports = function ai({ redisOn, redisCmd } = {}) {
     const parsed = parseJsonBlock(raw);
     if (!parsed || !parsed.kind) return null;
     const kind = ['opinion', 'claim', 'mixed'].includes(parsed.kind) ? parsed.kind : 'claim';
-    const out = { kind, claim: String(parsed.claim || '').slice(0, 300), note: String(parsed.note || '').slice(0, 300),
+    const out = { kind, claim: String(parsed.claim || '').slice(0, 300), opinion: String(parsed.opinion || '').slice(0, 300), note: String(parsed.note || '').slice(0, 300),
       provider, model: provider === 'anthropic' ? ANTH_MODEL : GEMINI_MODEL, tierLabel: provider === 'anthropic' ? 'Claude · Pro' : 'Gemini' };
     await cacheSet(ckey, out);
     return out;

@@ -110,15 +110,15 @@ module.exports = function claims({ SERPAPI_KEY = '', FACTCHECK_KEY = '', ai = nu
     if (kind === 'opinion') {
       return { text, kind, claim: '', classifier: cls || null,
         read: { eyebrow: EYEBROW, level: 'photo', badge: 'Opinion — not a factual claim',
-          line: ((cls && cls.note) ? cls.note + ' ' : '') + 'There’s no checkable fact here to weigh against evidence — Relity verifies claims, not viewpoints.' },
+          line: ((cls && cls.note) ? cls.note + ' ' : '') + ((cls && cls.opinion) ? '“' + cls.opinion + '” is the poster’s viewpoint. ' : '') + 'There’s no checkable fact here to weigh — Relity verifies claims, not opinions.' },
         fact: { connected: false }, sources: { count: 0, items: [], buckets: { news: [], fc: [], social: [] } } };
     }
     const [fact, web] = await Promise.all([factCheck(claimQ), webSearch(claimQ)]);
     const items = (web.items || []);
     const b = bucket(items);
     const read = weigh(fact, b, recencyClaim(text), claimQ);
-    if (kind === 'mixed') read.line = 'This mixes opinion with a checkable claim. ' + read.line;
     if (claimQ && claimQ !== text) read.line = `Checked the factual claim: “${claimQ}”. ` + read.line;
+    if (cls && cls.opinion) read.line += ` The poster’s own framing — “${cls.opinion}” — is opinion, not something Relity can verify.`;
     return { text, kind, claim: claimQ, classifier: cls || null, read, fact, sources: { count: items.length, items, buckets: b } };
   }
 
