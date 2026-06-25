@@ -216,7 +216,7 @@
       </button>
       <span class="alt-or">or</span>
       <div class="linkrow">
-        <input type="text" id="linkInput" placeholder="paste a link or post" />
+        <input type="text" id="linkInput" placeholder="Paste a link, post, claim, or question" />
         <button class="btn ghost" id="linkBtn">Check</button>
       </div>
     </div>
@@ -750,8 +750,16 @@ async function checkLink(){
     alert('Could not reach that link. Check the address — or right-click the image, “Copy image”, and press Ctrl+V here.');
   }finally{ btn.textContent=label; btn.disabled=false; }
 }
-$('#linkBtn').addEventListener('click',checkLink);
-$('#linkInput').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();checkLink();}});
+function heroCheck(){
+  const v=$('#linkInput').value.trim();
+  if(!v){ $('#linkInput').focus(); return; }
+  if(/^(https?:\/\/|www\.)\S+$/i.test(v)){ checkLink(); return; }
+  const ci=$('#claimInput'); if(ci) ci.value=v;
+  const out=$('#claimOut'); if(out){ out.innerHTML='<p class="tip">Checking…</p>'; try{ out.scrollIntoView({behavior:'smooth',block:'center'}); }catch(_){} }
+  checkClaim();
+}
+$('#linkBtn').addEventListener('click',heroCheck);
+$('#linkInput').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();heroCheck();}});
 /* if a full URL is pasted into the box, just run it */
 $('#linkInput').addEventListener('paste',()=>{ setTimeout(()=>{ const v=$('#linkInput').value.trim(); if(/^https?:\/\/\S+$/i.test(v)) checkLink(); },40); });
 function reset(){dossier.classList.remove('show');$('#submitPanel').style.display='';$('#linkInput').value='';const cap=$('#captionInput');if(cap)cap.value='';fileInput.value='';window.scrollTo({top:0,behavior:'smooth'});}
