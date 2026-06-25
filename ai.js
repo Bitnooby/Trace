@@ -4,7 +4,7 @@ module.exports = function ai({ redisOn, redisCmd } = {}) {
   const ANTH_KEY      = process.env.ANTHROPIC_API_KEY || '';
   const ANTH_MODEL    = process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5-20251001';
   const mem = new Map();
-  const fetchT = (url, opts, ms) => { const c = new AbortController(); const t = setTimeout(() => c.abort(), ms || 15000); return fetch(url, Object.assign({}, opts || {}, { signal: c.signal })).finally(() => clearTimeout(t)); };
+  const fetchT = (url, opts, ms) => { const c = new AbortController(); const t = setTimeout(() => c.abort(), ms || 20000); return fetch(url, Object.assign({}, opts || {}, { signal: c.signal })).finally(() => clearTimeout(t)); };
   const prompt = (caption, evidence) =>
     'You are the forensic vision layer of Relity, a media-verification tool whose rule is "evidence, not a verdict." ' +
     'Examine the image closely, like an analyst, and report ONLY what is visible. Actively scan for the tell-tale signs of AI generation or photo manipulation: ' +
@@ -37,7 +37,7 @@ module.exports = function ai({ redisOn, redisCmd } = {}) {
           const t = ((((j.candidates || [])[0] || {}).content || {}).parts || [{}])[0].text || '';
           if (t) return t;
           lastErr = 'gemini ' + model + ' empty';
-        } catch (e) { lastErr = 'gemini ' + model + ' ' + e.message; }
+        } catch (e) { lastErr = 'gemini ' + model + ' ' + e.message; if (e && e.name === 'AbortError') throw e; }
       }
     }
     throw new Error(lastErr);
@@ -70,7 +70,7 @@ module.exports = function ai({ redisOn, redisCmd } = {}) {
           const t = ((((j.candidates || [])[0] || {}).content || {}).parts || [{}])[0].text || '';
           if (t) return t;
           lastErr = 'gemini ' + model + ' empty';
-        } catch (e) { lastErr = 'gemini ' + model + ' ' + e.message; }
+        } catch (e) { lastErr = 'gemini ' + model + ' ' + e.message; if (e && e.name === 'AbortError') throw e; }
       }
     }
     throw new Error(lastErr);
