@@ -1,13 +1,13 @@
 /* ============================================================
    Relity — Telegram bot
-   Send/forward a claim, headline, link, or IMAGE → get a Relity evidence read.
-   Free to run (Telegram Bot API has no fee). Reuses the site's claim engine,
-   AI classifier, image reverse-search + AI vision, and /check report pages.
+   Send/forward a claim, headline, link, IMAGE, or VIDEO → get a Relity
+   evidence read. Free to run. Reuses the site's claim engine, AI classifier,
+   image reverse-search + AI vision, video keyframe check, and /check pages.
    Dormant until TELEGRAM_BOT_TOKEN is set.
    ============================================================ */
 const crypto = require('crypto');
 
-module.exports = function telegram({ claims, ai, img } = {}) {
+module.exports = function telegram({ claims, ai, img, video } = {}) {
   const TOKEN  = process.env.TELEGRAM_BOT_TOKEN || '';
   const SECRET = process.env.RELITY_SECRET || 'dev-insecure';
   const BASE   = (process.env.RELITY_URL || 'https://relity.ai').replace(/\/$/, '');
@@ -24,6 +24,14 @@ module.exports = function telegram({ claims, ai, img } = {}) {
   }
   const send = (chatId, text) => api('sendMessage', { chat_id: chatId, text, parse_mode: 'HTML', disable_web_page_preview: true });
 
+  async function download(fileId) {
+    const f = await api('getFile', { file_id: fileId });
+    if (!f || !f.ok || !f.result || !f.result.file_path) return null;
+    const fp = f.result.file_path;
+    const dl = await fetch(`https://api.telegram.org/file/bot${TOKEN}/${fp}`);
+    return { buf: Buffer.from(await dl.arrayBuffer()), path: fp };
+  }
+
   function formatClaim(r) {
     if (!r || r.error) return '⚠️ ' + esc((r && r.error) || 'Could not check that. Try rephrasing.');
     if (!r.read) return '⚠️ Could not check that. Try rephrasing the claim.';
@@ -34,7 +42,6 @@ module.exports = function telegram({ claims, ai, img } = {}) {
       const doms = [...new Set(items.map(i => i.source).filter(Boolean))].slice(0, 4).join(', ');
       if (doms) msg += '\n\n<i>Seen on:</i> ' + esc(doms);
     }
-    msg += '\n\n📷 To check an image, just send it here.';
     return msg;
   }
 
@@ -42,12 +49,10 @@ module.exports = function telegram({ claims, ai, img } = {}) {
     if (!img || !img.reverseSearch) { await send(chatId, '📷 Image checking isn’t available right now — try ' + BASE + '.'); return; }
     await send(chatId, '🔎 Checking that image…');
     try {
-      const f = await api('getFile', { file_id: fileId });
-      if (!f || !f.ok || !f.result || !f.result.file_path) { await send(chatId, 'Couldn’t fetch that image — try sending it again.'); return; }
-      const fp = f.result.file_path;
-      const dl = await fetch(`https://api.telegram.org/file/bot${TOKEN}/${fp}`);
-      const buf = Buffer.from(await dl.arrayBuffer());
-      const mime = /\.png$/i.test(fp) ? 'image/png' : (/\.webp$/i.test(fp) ? 'image/webp' : 'image/jpeg');
+      const d = await download(fileId);
+      if (!d) { await send(chatId, 'Couldn’t fetch that image — try sending it again.'); return; }
+      const buf = d.buf;
+      const mime = /\.png$/i.test(d.path) ? 'image/png' : (/\.webp$/i.test(d.path) ? 'image/webp' : 'image/jpeg');
       const sha = crypto.createHash('sha256').update(buf).digest('hex');
       const id = sha.slice(0, 10);
       let report = await img.getReport(id);
@@ -72,23 +77,45 @@ module.exports = function telegram({ claims, ai, img } = {}) {
     } catch (e) { console.error('telegram checkPhoto:', e.message); await send(chatId, '⚠️ Something went wrong checking that image. Try again, or use ' + BASE + '.'); }
   }
 
+  async function checkVideoMessage(chatId, fileId) {
+    if (!video || !video.checkVideo) { await send(chatId, '🎬 Video checking isn’t available right now — try ' + BASE + '.'); return; }
+    await send(chatId, '🎬 Checking that video’s frames…');
+    try {
+      const d = await download(fileId);
+      if (!d) { await send(chatId, 'Couldn’t fetch that video — it may be larger than Telegram lets bots download (~20MB). Try a shorter clip, or use ' + BASE + '.'); return; }
+      const out = await video.checkVideo(d.buf);
+      const rd = (out && out.read) || { badge: 'Checked', line: '' };
+      let msg = '🔎 <b>Relity</b> — evidence, not verdicts\n\n<b>' + esc(rd.badge) + '</b>\n' + esc(rd.line);
+      if (out && out.where && out.where.domains && out.where.domains.length) msg += '\n\n<i>Frames seen on:</i> ' + esc(out.where.domains.slice(0, 4).join(', '));
+      msg += '\n\n⚠️ Frame-checking finds where footage already appears online — it is not deepfake detection.';
+      await send(chatId, msg);
+    } catch (e) { console.error('telegram checkVideoMessage:', e.message); await send(chatId, '⚠️ Something went wrong checking that video. Try a shorter clip, or use ' + BASE + '.'); }
+  }
+
   async function handle(update) {
     try {
       const m = update.message || update.edited_message;
       if (!m || !m.chat) return;
       const chatId = m.chat.id;
       const text = (m.text || m.caption || '').trim();
-      if (m.photo && m.photo.length) {
-        await checkPhoto(chatId, m.photo[m.photo.length - 1].file_id, m.caption || '');
-        return;
-      }
-      if (!text) { await send(chatId, 'Send me a claim, headline, link, or an image and I’ll show the evidence.'); return; }
+
+      if (m.photo && m.photo.length) { await checkPhoto(chatId, m.photo[m.photo.length - 1].file_id, m.caption || ''); return; }
+      const vid = m.video || m.video_note || (m.document && /^video\//.test(m.document.mime_type || '') ? m.document : null) || (m.animation || null);
+      if (vid && vid.file_id) { await checkVideoMessage(chatId, vid.file_id); return; }
+
       if (/^\/(start|help)\b/.test(text)) {
-        await send(chatId, '👋 <b>Relity</b> — evidence, not verdicts.\n\nSend me any of these and I’ll show the evidence:\n• a <b>claim / headline / post</b> → is it a checkable claim backed by evidence, or just opinion?\n• an <b>image</b> → where it appears online + an AI read\n\nFull site: ' + BASE);
+        await send(chatId, '👋 <b>Relity</b> — evidence, not verdicts.\n\nSend me any of these and I’ll show the evidence:\n• a <b>claim / headline / post</b> → is it a checkable claim backed by evidence, or just opinion?\n• an <b>image</b> → where it appears online + an AI read\n• a <b>video file</b> → where its frames appear online\n\nNote: I can’t open videos from X/social <i>links</i> — download the clip and send the file. Full site: ' + BASE);
         return;
       }
-      const cls = (ai && ai.analyzeClaim) ? await ai.analyzeClaim({ tier: 'free', text }).catch(() => null) : null;
-      const result = await claims.analyze(text, cls);
+      if (!text) { await send(chatId, 'Send me a claim, headline, image, or video and I’ll show the evidence.'); return; }
+
+      const stripped = text.replace(/https?:\/\/\S+/gi, '').trim();
+      if (!stripped) {
+        await send(chatId, '🔗 That’s a link on its own. I can’t open videos or posts from X/social links directly. To check:\n• an <b>image</b> or <b>video</b> → download it and send the <b>file</b> here\n• a <b>claim</b> → send the text, not just the link\n\nOr paste the link at ' + BASE + '.');
+        return;
+      }
+      const cls = (ai && ai.analyzeClaim) ? await ai.analyzeClaim({ tier: 'free', text: stripped }).catch(() => null) : null;
+      const result = await claims.analyze(stripped, cls);
       await send(chatId, formatClaim(result));
     } catch (e) { console.error('telegram handle:', e.message); }
   }

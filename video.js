@@ -97,6 +97,26 @@ module.exports = function video({ SERPAPI_KEY = '', putImage } = {}) {
     return { eyebrow: E, level: 'scrutinize', badge: 'Unverified', line: `Couldn’t find these frames on sources we check. Frame checks can’t confirm a video on their own — and this is not deepfake detection.` + vint };
   }
 
+  async function checkVideo(buf) {
+    const E = 'Consensus — the evidence, weighed';
+    if (!ffOK) return { read: { eyebrow: E, level: 'scrutinize', badge: 'Video unavailable', line: 'Video analysis is temporarily unavailable.' }, where: null };
+    if (!SERPAPI_KEY) return { read: { eyebrow: E, level: 'scrutinize', badge: 'Not configured', line: 'Video web-check needs the reverse-search key.' }, where: null };
+    const base = (process.env.RELITY_URL || 'https://relity.ai').replace(/\/$/, '');
+    const { frames } = await extractKeyframes(buf, 3);
+    if (!frames.length) return { read: { eyebrow: E, level: 'scrutinize', badge: 'Unreadable', line: 'Couldn’t read frames from that video.' }, where: null };
+    const per = [];
+    for (const fb of frames) {
+      const id = 'v' + crypto.randomBytes(6).toString('hex');
+      await putImage(id, fb, 'image/jpeg');
+      per.push({ id, rev: await reverseSearch(`${base}/img/${id}`) });
+    }
+    const allDomains = [...new Set(per.flatMap(f => f.rev.domains || []))];
+    const totalCount = per.reduce((s, f) => s + (f.rev.count || 0), 0);
+    const earliest = per.map(f => f.rev.earliest).filter(Boolean).sort((a, b) => new Date(a.date) - new Date(b.date))[0] || null;
+    const interp = interpretDomains(allDomains);
+    return { read: weigh(interp, totalCount, vintageYear(earliest)), where: { domains: allDomains.slice(0, 8), count: totalCount, earliest } };
+  }
+
   function mount(app, uploadVideo) {
     app.post('/api/check-video', uploadVideo.single('video'), async (req, res) => {
       try {
@@ -127,5 +147,5 @@ module.exports = function video({ SERPAPI_KEY = '', putImage } = {}) {
     });
   }
 
-  return { extractKeyframes, weigh, interpretDomains, mount, ffOK };
+  return { extractKeyframes, weigh, interpretDomains, checkVideo, mount, ffOK };
 };

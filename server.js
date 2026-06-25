@@ -595,7 +595,7 @@ function page(title, body, base, og) {
 billing.mount(app, express);
 app.use('/api/check-claim', (req, res, next) => meteredGate('claim', req, res, next));
 claims.mount(app);
-const telegram = require('./telegram')({ claims, ai, img: { putImage, getReport, putReport, reverseSearch, interpretDomains, vintageYear, computeConsensus } });
+const telegram = require('./telegram')({ claims, ai, video, img: { putImage, getReport, putReport, reverseSearch, interpretDomains, vintageYear, computeConsensus } });
 telegram.mount(app);
 app.use('/api/check-video', (req, res, next) => meteredGate('video', req, res, next));
 video.mount(app, uploadVideo);
