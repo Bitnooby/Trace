@@ -75,11 +75,11 @@ module.exports = function ai({ redisOn, redisCmd } = {}) {
     return ((j.content || [{}])[0].text) || '';
   }
   const claimPrompt = (text) =>
-    'You are the text-analysis layer of Relity, a media-verification tool. Read the TEXT (a social post, caption, or news snippet) and SEPARATE fact from opinion. ' +
+    'You are the text-analysis layer of Relity, a media-verification tool. Read the TEXT (a social post, caption, question, or news snippet) and SEPARATE fact from opinion. ' +
     'Reply with STRICT minified JSON ONLY (no markdown, no code fence), exactly this shape: ' +
-    '{"kind":"opinion|claim|mixed","claim":"<the single most important CHECKABLE factual assertion, rewritten as a concise neutral statement for a web search; empty string if there is none>","opinion":"<the poster\'s subjective take, framing, emotion or judgement, in a short phrase; empty string if none>","note":"<one short sentence explaining your call>"} ' +
-    'Definitions: opinion = value judgments, predictions, feelings, sarcasm, or unfalsifiable statements. claim = a concrete verifiable assertion of fact (who/what/when/where, numbers, events). mixed = a checkable fact wrapped in opinion or framing. ' +
-    'Put the factual core in "claim" and the subjective part in "opinion". Do NOT judge whether the claim is true; only classify and separate. ' +
+    '{"kind":"opinion|claim|mixed|question","claim":"<the single most important CHECKABLE factual assertion, or for a question the topic to search, as a concise neutral phrase; empty string if none>","opinion":"<the poster\'s subjective take, framing, emotion or judgement, in a short phrase; empty string if none>","answer":"<if the TEXT is a question, a concise factual answer from well-established collective knowledge (say if uncertain); empty string otherwise>","note":"<one short sentence explaining your call>"} ' +
+    'Definitions: question = the TEXT asks something. opinion = value judgments, predictions, feelings, sarcasm, or unfalsifiable statements. claim = a concrete verifiable assertion of fact. mixed = a checkable fact wrapped in opinion or framing. ' +
+    'Put the factual core (or the question topic) in "claim", the subjective part in "opinion", and answer any question in "answer". Do NOT judge whether a claim is true; only classify, separate, and answer questions. ' +
     'TEXT: """' + String(text || '').slice(0, 1200) + '"""';
   async function analyzeClaim({ tier, text } = {}) {
     text = (text || '').toString().trim();
@@ -95,8 +95,8 @@ module.exports = function ai({ redisOn, redisCmd } = {}) {
     catch (e) { console.error('analyzeClaim:', e.message); return null; }
     const parsed = parseJsonBlock(raw);
     if (!parsed || !parsed.kind) return null;
-    const kind = ['opinion', 'claim', 'mixed'].includes(parsed.kind) ? parsed.kind : 'claim';
-    const out = { kind, claim: String(parsed.claim || '').slice(0, 300), opinion: String(parsed.opinion || '').slice(0, 300), note: String(parsed.note || '').slice(0, 300),
+    const kind = ['opinion', 'claim', 'mixed', 'question'].includes(parsed.kind) ? parsed.kind : 'claim';
+    const out = { kind, claim: String(parsed.claim || '').slice(0, 300), opinion: String(parsed.opinion || '').slice(0, 300), answer: String(parsed.answer || '').slice(0, 400), note: String(parsed.note || '').slice(0, 300),
       provider, model: provider === 'anthropic' ? ANTH_MODEL : GEMINI_MODEL, tierLabel: provider === 'anthropic' ? 'Claude · Pro' : 'Gemini' };
     await cacheSet(ckey, out);
     return out;

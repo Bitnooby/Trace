@@ -113,6 +113,21 @@ module.exports = function claims({ SERPAPI_KEY = '', FACTCHECK_KEY = '', ai = nu
           line: ((cls && cls.note) ? cls.note + ' ' : '') + ((cls && cls.opinion) ? '“' + cls.opinion + '” is the poster’s viewpoint. ' : '') + 'There’s no checkable fact here to weigh — Relity verifies claims, not opinions.' },
         fact: { connected: false }, sources: { count: 0, items: [], buckets: { news: [], fc: [], social: [] } } };
     }
+    if (kind === 'question') {
+      const [qFact, qWeb] = await Promise.all([factCheck(claimQ), webSearch(claimQ)]);
+      const qItems = (qWeb.items || []);
+      const qb = bucket(qItems);
+      const credible = [...new Set([...(qb.news || []), ...(qb.auth || [])])];
+      const ans = (cls && cls.answer) ? cls.answer.trim() : '';
+      let line = ans ? ans + ' ' : '';
+      if (credible.length) line += `Documented by credible sources (${credible.slice(0, 3).join(', ')}).`;
+      else if (qItems.length) line += 'Discussed across several public sources.';
+      else line += 'I couldn’t find authoritative sources on this.';
+      line += ' This is a general-knowledge answer — verify it for anything important.';
+      return { text, kind, claim: claimQ, classifier: cls || null,
+        read: { eyebrow: EYEBROW, level: 'photo', badge: 'Answer', line },
+        fact: qFact, sources: { count: qItems.length, items: qItems, buckets: qb } };
+    }
     const [fact, web] = await Promise.all([factCheck(claimQ), webSearch(claimQ)]);
     const items = (web.items || []);
     const b = bucket(items);
