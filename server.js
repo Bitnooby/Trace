@@ -133,7 +133,6 @@ const billing = require('./billing')({ redisOn, redisCmd, readCookie });
 const ai      = require('./ai')({ redisOn, redisCmd });
 const claims  = require('./claims')({ SERPAPI_KEY, FACTCHECK_KEY, ai, tierOf: billing.tierOf });
 const video   = require('./video')({ SERPAPI_KEY, putImage });
-const telegram = require('./telegram')({ claims, ai });
 async function meteredGate(name, req, res, next) {
   if (!(await allow(name, clientIp(req), RL_PUBLISH.max, RL_PUBLISH.win)))
     return res.status(429).json({ error: 'Too many checks right now — give it a moment.' });
@@ -596,6 +595,7 @@ function page(title, body, base, og) {
 billing.mount(app, express);
 app.use('/api/check-claim', (req, res, next) => meteredGate('claim', req, res, next));
 claims.mount(app);
+const telegram = require('./telegram')({ claims, ai, img: { putImage, getReport, putReport, reverseSearch, interpretDomains, vintageYear, computeConsensus } });
 telegram.mount(app);
 app.use('/api/check-video', (req, res, next) => meteredGate('video', req, res, next));
 video.mount(app, uploadVideo);
