@@ -24,7 +24,7 @@ const NEWS=['reuters','apnews','bbc.','nytimes','washingtonpost','theguardian','
 const FC=['snopes','politifact','factcheck','fullfact','leadstories','checkyourfact','altnews','boomlive','factly','africacheck','newschecker'];
 const SOCIAL=['x.com','twitter','facebook','instagram','tiktok','reddit','youtube','youtu.be','threads.net','t.me','telegram'];
 
-module.exports = function video({ SERPAPI_KEY = '', putImage } = {}) {
+module.exports = function video({ SERPAPI_KEY = '', putImage, ai } = {}) {
 
   function run(bin, args) {
     return new Promise((res, rej) => {
@@ -114,7 +114,15 @@ module.exports = function video({ SERPAPI_KEY = '', putImage } = {}) {
     const totalCount = per.reduce((s, f) => s + (f.rev.count || 0), 0);
     const earliest = per.map(f => f.rev.earliest).filter(Boolean).sort((a, b) => new Date(a.date) - new Date(b.date))[0] || null;
     const interp = interpretDomains(allDomains);
-    return { read: weigh(interp, totalCount, vintageYear(earliest)), where: { domains: allDomains.slice(0, 8), count: totalCount, earliest } };
+    let aiRead = null;
+    try {
+      const frame = frames[Math.floor(frames.length / 2)];
+      if (ai && ai.analyzeImage && frame) {
+        const fsha = crypto.createHash('sha256').update(frame).digest('hex');
+        aiRead = await ai.analyzeImage({ tier: 'free', sha: fsha, buffer: frame, mime: 'image/jpeg', caption: null });
+      }
+    } catch (e) { console.error('video aiRead:', e.message); }
+    return { read: weigh(interp, totalCount, vintageYear(earliest)), where: { domains: allDomains.slice(0, 8), count: totalCount, earliest }, aiRead };
   }
 
   function mount(app, uploadVideo) {

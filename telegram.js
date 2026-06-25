@@ -86,6 +86,7 @@ module.exports = function telegram({ claims, ai, img, video } = {}) {
       const out = await video.checkVideo(d.buf);
       const rd = (out && out.read) || { badge: 'Checked', line: '' };
       let msg = '🔎 <b>Relity</b> — evidence, not verdicts\n\n<b>' + esc(rd.badge) + '</b>\n' + esc(rd.line);
+      if (out && out.aiRead && out.aiRead.text) msg += '\n\n<b>AI vision (a frame):</b> ' + esc(out.aiRead.text);
       if (out && out.where && out.where.domains && out.where.domains.length) msg += '\n\n<i>Frames seen on:</i> ' + esc(out.where.domains.slice(0, 4).join(', '));
       msg += '\n\n⚠️ Frame-checking finds where footage already appears online — it is not deepfake detection.';
       await send(chatId, msg);

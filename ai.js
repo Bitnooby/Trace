@@ -5,10 +5,18 @@ module.exports = function ai({ redisOn, redisCmd } = {}) {
   const ANTH_MODEL    = process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5-20251001';
   const mem = new Map();
   const prompt = (caption, evidence) =>
-    'You are the vision layer of Relity, a media-verification tool whose rule is "evidence, not a verdict." ' +
-    'In 2-3 short plain sentences: (1) what the image appears to show; (2) any VISIBLE signs of AI generation or editing — hedge, you cannot be certain from pixels alone; (3) ' +
-    (caption ? 'whether the image plausibly matches this caption: "' + caption + '".' : 'whether anything looks internally inconsistent.') +
-    ' Describe only what is visible; never assert facts you cannot see; do NOT give a final real/fake verdict — you are one signal among several.' +
+    'You are the forensic vision layer of Relity, a media-verification tool whose rule is "evidence, not a verdict." ' +
+    'Examine the image closely, like an analyst, and report ONLY what is visible. Actively scan for the tell-tale signs of AI generation or photo manipulation: ' +
+    'malformed hands or fingers (wrong count, fused, bent wrong); distorted teeth, eyes, ears, or jewelry; ' +
+    'garbled, melted, or nonsensical text on signs, labels, or clothing; impossible anatomy, scale, or physics; ' +
+    'inconsistent shadows, reflections, or lighting directions; objects that warp, melt, blur, or merge into each other; ' +
+    'unnaturally smooth "plastic" or waxy skin; repeated or nonsensical background patterns; and warped, haloed, or smeared edges. ' +
+    'Reply in 3-4 short, plain sentences: ' +
+    '(1) what the image appears to show; ' +
+    '(2) ANY anomalies or physically impossible details you can actually see — name them specifically and where they are — or state plainly that you see no obvious anomalies; ' +
+    (caption ? '(3) whether it plausibly matches this caption: "' + caption + '"; ' : '(3) whether anything looks internally inconsistent; ') +
+    '(4) a hedged read: do the visible details look consistent with a real photograph, or do they lean AI-generated / edited? Describe the evidence — do NOT declare certainty, and never give a final real/fake verdict; you are one signal among several. ' +
+    'Describe only what is visible; never assert facts you cannot see.' +
     (evidence ? ' Context: reverse image search found it on ' + evidence + '.' : '');
   const GEMINI_MODELS = [GEMINI_MODEL, 'gemini-flash-latest', 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'].filter((v, i, a) => v && a.indexOf(v) === i);
   async function gemini(b64, mime, p) {
@@ -36,7 +44,7 @@ module.exports = function ai({ redisOn, redisCmd } = {}) {
   async function anthropic(b64, mime, p) {
     const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST',
       headers: { 'x-api-key': ANTH_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-      body: JSON.stringify({ model: ANTH_MODEL, max_tokens: 300, messages: [{ role: 'user', content: [
+      body: JSON.stringify({ model: ANTH_MODEL, max_tokens: 500, messages: [{ role: 'user', content: [
         { type: 'text', text: p }, { type: 'image', source: { type: 'base64', media_type: mime, data: b64 } } ] }] }) });
     const j = await r.json();
     if (!r.ok) throw new Error('anthropic ' + r.status);
