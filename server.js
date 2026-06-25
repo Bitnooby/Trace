@@ -598,4 +598,41 @@ claims.mount(app);
 app.use('/api/check-video', (req, res, next) => meteredGate('video', req, res, next));
 video.mount(app, uploadVideo);
 
+app.get('/privacy', (req, res) => {
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.send(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Relity — Privacy Policy</title>
+<style>body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#131722;background:#fff;line-height:1.6}main{max-width:720px;margin:0 auto;padding:48px 22px 80px}a{color:#0B6E6E}h1{font-size:30px;margin:0 0 6px}h2{font-size:18px;margin:30px 0 8px;color:#0B6E6E}.sub{color:#586273;margin:0 0 28px}p,li{color:#2b3344;font-size:15.5px}ul{padding-left:20px}code{background:#F4F6F9;padding:1px 5px;border-radius:4px;font-size:13px}.foot{margin-top:40px;border-top:1px solid #E6EAF0;padding-top:16px;color:#8A95A4;font-size:13px}</style></head>
+<body><main>
+<h1>Privacy Policy</h1>
+<p class="sub">Relity — evidence, not verdicts. Last updated June 2026.</p>
+<p>Relity helps you check whether media and claims are what they appear to be. We built it to need as little of your data as possible. This policy covers the relity.ai website and the Relity browser extension.</p>
+<h2>The browser extension</h2>
+<p>The extension adds right-click menu items. When you choose one, it opens relity.ai in a new tab with the item you selected — an image address, a link, highlighted text, or the page address. That is all it does.</p>
+<ul>
+<li>It does <b>not</b> run in the background, track your browsing, or use analytics.</li>
+<li>It collects and stores <b>no</b> personal data.</li>
+<li>Its only permission is <code>contextMenus</code> (to add the right-click menu). It acts only when you explicitly click a menu item.</li>
+</ul>
+<h2>What you submit to relity.ai</h2>
+<ul>
+<li><b>Image file checks</b> (metadata, content credentials, AI markers, fingerprint) run locally in your browser — the file itself is not uploaded for these.</li>
+<li><b>Web cross-checks and AI reads:</b> when you ask for reverse-image search, fact-checks, "where it appears," or an AI vision/text read, the content you submit is sent to the services that produce those signals so the report can be generated.</li>
+<li>Results may be cached by a content <b>fingerprint</b> so a widely-shared item is analyzed once rather than repeatedly.</li>
+</ul>
+<h2>Accounts, cookies &amp; payments</h2>
+<ul>
+<li>Free use needs no account. We use an anonymous device cookie only to count your daily free checks.</li>
+<li>If you sign in (email link or Google), we store your email to remember your Pro status, kept in a signed session cookie.</li>
+<li>Payments are processed by Stripe. We never see or store your card details.</li>
+</ul>
+<h2>Services we rely on</h2>
+<p>Render (hosting), Upstash (storage &amp; caching), Stripe (payments), Resend (sign-in emails), Google and SerpAPI (search &amp; fact-check), and Google Gemini &amp; Anthropic Claude (AI reads). Content is shared with these only as needed to produce your report or run your account.</p>
+<h2>What we don't do</h2>
+<p>No advertising. No selling your data. No tracking you across the web.</p>
+<h2>Contact</h2>
+<p>Questions about this policy? Email <a href="mailto:support@relity.ai">support@relity.ai</a>.</p>
+<div class="foot">© 2026 Relity · <a href="/">relity.ai</a></div>
+</main></body></html>`);
+});
+
 app.listen(PORT, () => console.log(`Relity running on http://localhost:${PORT}`));
