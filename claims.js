@@ -18,7 +18,7 @@ const NEWS = ['reuters','apnews','bbc.','nytimes','washingtonpost','theguardian'
 const FC   = ['snopes','politifact','factcheck','fullfact','leadstories','checkyourfact','truthorfiction','altnews','boomlive','factly','africacheck','newschecker'];
 const SOCIAL = ['x.com','twitter','facebook','instagram','tiktok','reddit','youtube','youtu.be','threads.net','t.me','telegram','medium.com','substack','quora','linkedin'];
 
-module.exports = function claims({ SERPAPI_KEY = '', FACTCHECK_KEY = '' } = {}) {
+module.exports = function claims({ SERPAPI_KEY = '', FACTCHECK_KEY = '', ai = null, tierOf = null } = {}) {
 
   async function factCheck(q) {
     if (!FACTCHECK_KEY) return { connected: false };
@@ -79,20 +79,39 @@ module.exports = function claims({ SERPAPI_KEY = '', FACTCHECK_KEY = '' } = {}) 
     return { eyebrow: E, level: 'scrutinize', badge: 'No record found', line: 'Couldn’t find this discussed on the sources we check — unverified. Absence of a record is not proof either way.' + recNote };
   }
 
-  async function analyze(text) {
-    text = (text || '').toString().slice(0, 500).trim();
-    if (!text) return { error: 'Enter a claim or headline to check.' };
-    const [fact, web] = await Promise.all([factCheck(text), webSearch(text)]);
+  const EYEBROW = 'Consensus — the evidence, weighed';
+  async function analyze(text, cls) {
+    text = (text || '').toString().slice(0, 1200).trim();
+    if (!text) return { error: 'Enter a claim, caption, or post to check.' };
+    const kind = (cls && cls.kind) ? cls.kind : 'claim';
+    const claimQ = (cls && cls.claim && cls.claim.trim()) ? cls.claim.trim() : text;
+    if (kind === 'opinion') {
+      return { text, kind, claim: '', classifier: cls || null,
+        read: { eyebrow: EYEBROW, level: 'photo', badge: 'Opinion — not a factual claim',
+          line: ((cls && cls.note) ? cls.note + ' ' : '') + 'There’s no checkable fact here to weigh against evidence — Relity verifies claims, not viewpoints.' },
+        fact: { connected: false }, sources: { count: 0, items: [], buckets: { news: [], fc: [], social: [] } } };
+    }
+    const [fact, web] = await Promise.all([factCheck(claimQ), webSearch(claimQ)]);
     const items = (web.items || []);
     const b = bucket(items);
     const read = weigh(fact, b, recencyClaim(text));
-    return { text, read, fact, sources: { count: items.length, items, buckets: b } };
+    if (kind === 'mixed') read.line = 'This mixes opinion with a checkable claim. ' + read.line;
+    if (claimQ && claimQ !== text) read.line = `Checked the factual claim: “${claimQ}”. ` + read.line;
+    return { text, kind, claim: claimQ, classifier: cls || null, read, fact, sources: { count: items.length, items, buckets: b } };
   }
 
   function mount(app) {
     app.post('/api/check-claim', async (req, res) => {
-      try { res.json(await analyze(req.body && req.body.text)); }
-      catch (e) { res.status(500).json({ error: e.message }); }
+      try {
+        const text = req.body && req.body.text;
+        let cls = null;
+        if (ai && ai.analyzeClaim) {
+          let tier = 'free';
+          try { if (tierOf) tier = (await tierOf(req)).tier || 'free'; } catch {}
+          cls = await ai.analyzeClaim({ tier, text }).catch(() => null);
+        }
+        res.json(await analyze(text, cls));
+      } catch (e) { res.status(500).json({ error: e.message }); }
     });
   }
 

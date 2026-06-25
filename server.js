@@ -130,9 +130,9 @@ async function quotaInc(id) {
 }
 
 const billing = require('./billing')({ redisOn, redisCmd, readCookie });
-const claims  = require('./claims')({ SERPAPI_KEY, FACTCHECK_KEY });
-const video   = require('./video')({ SERPAPI_KEY, putImage });
 const ai      = require('./ai')({ redisOn, redisCmd });
+const claims  = require('./claims')({ SERPAPI_KEY, FACTCHECK_KEY, ai, tierOf: billing.tierOf });
+const video   = require('./video')({ SERPAPI_KEY, putImage });
 async function meteredGate(name, req, res, next) {
   if (!(await allow(name, clientIp(req), RL_PUBLISH.max, RL_PUBLISH.win)))
     return res.status(429).json({ error: 'Too many checks right now — give it a moment.' });

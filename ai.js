@@ -44,6 +44,63 @@ module.exports = function ai({ redisOn, redisCmd } = {}) {
   }
   async function cacheGet(k) { if (redisOn) { try { const v = await redisCmd(['GET', k]); if (v) return JSON.parse(v); } catch {} } return mem.get(k) || null; }
   async function cacheSet(k, v) { if (redisOn) { try { await redisCmd(['SET', k, JSON.stringify(v), 'EX', 60 * 60 * 24 * 30]); return; } catch {} } mem.set(k, v); }
+
+  // ---- text classifier: opinion vs checkable claim (+ extract the claim) ----
+  function parseJsonBlock(s) { try { const m = String(s).match(/\{[\s\S]*\}/); return m ? JSON.parse(m[0]) : null; } catch { return null; } }
+  async function geminiText(p) {
+    let lastErr = 'gemini-text: no model worked';
+    for (const model of GEMINI_MODELS) {
+      for (const noThink of [true, false]) {
+        try {
+          const gen = { maxOutputTokens: 512, temperature: 0 };
+          if (noThink) gen.thinkingConfig = { thinkingBudget: 0 };
+          const u = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_KEY}`;
+          const r = await fetch(u, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contents: [{ parts: [{ text: p }] }], generationConfig: gen }) });
+          const j = await r.json();
+          if (!r.ok) { lastErr = 'gemini ' + model + ' HTTP ' + r.status; continue; }
+          const t = ((((j.candidates || [])[0] || {}).content || {}).parts || [{}])[0].text || '';
+          if (t) return t;
+          lastErr = 'gemini ' + model + ' empty';
+        } catch (e) { lastErr = 'gemini ' + model + ' ' + e.message; }
+      }
+    }
+    throw new Error(lastErr);
+  }
+  async function anthropicText(p) {
+    const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST',
+      headers: { 'x-api-key': ANTH_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+      body: JSON.stringify({ model: ANTH_MODEL, max_tokens: 400, messages: [{ role: 'user', content: [{ type: 'text', text: p }] }] }) });
+    const j = await r.json();
+    if (!r.ok) throw new Error('anthropic ' + r.status);
+    return ((j.content || [{}])[0].text) || '';
+  }
+  const claimPrompt = (text) =>
+    'You are the text-analysis layer of Relity, a media-verification tool. Decide whether the TEXT below makes a CHECKABLE FACTUAL CLAIM or is just OPINION/commentary. ' +
+    'Reply with STRICT minified JSON ONLY (no markdown, no code fence), exactly this shape: ' +
+    '{"kind":"opinion|claim|mixed","claim":"<the single most important checkable factual claim, rewritten as a concise neutral statement for a web search, or empty string if none>","note":"<one short sentence explaining your call>"} ' +
+    'Definitions: opinion = value judgments, predictions, feelings, rhetorical or unfalsifiable statements. claim = a concrete verifiable assertion of fact (who/what/when/where, numbers, events). mixed = opinion wrapped around a checkable fact. ' +
+    'Do NOT judge whether it is true; only classify and extract the factual core. ' +
+    'TEXT: """' + String(text || '').slice(0, 1200) + '"""';
+  async function analyzeClaim({ tier, text } = {}) {
+    text = (text || '').toString().trim();
+    if (!text) return null;
+    const isPro = tier === 'pro';
+    const provider = (isPro && ANTH_KEY) ? 'anthropic' : (GEMINI_KEY ? 'gemini' : null);
+    if (!provider) return null;
+    const sha = require('crypto').createHash('sha256').update(provider + ':' + text).digest('hex').slice(0, 16);
+    const ckey = `relity:claimai:${sha}`;
+    const cached = await cacheGet(ckey); if (cached) return cached;
+    let raw;
+    try { raw = provider === 'anthropic' ? await anthropicText(claimPrompt(text)) : await geminiText(claimPrompt(text)); }
+    catch (e) { console.error('analyzeClaim:', e.message); return null; }
+    const parsed = parseJsonBlock(raw);
+    if (!parsed || !parsed.kind) return null;
+    const kind = ['opinion', 'claim', 'mixed'].includes(parsed.kind) ? parsed.kind : 'claim';
+    const out = { kind, claim: String(parsed.claim || '').slice(0, 300), note: String(parsed.note || '').slice(0, 300),
+      provider, model: provider === 'anthropic' ? ANTH_MODEL : GEMINI_MODEL, tierLabel: provider === 'anthropic' ? 'Claude · Pro' : 'Gemini' };
+    await cacheSet(ckey, out);
+    return out;
+  }
   async function analyzeImage({ tier, sha, buffer, mime, caption, evidence }) {
     if (!buffer) return null;
     const isPro = tier === 'pro';
@@ -70,5 +127,5 @@ module.exports = function ai({ redisOn, redisCmd } = {}) {
     if (sha) await cacheSet(ckey, out);
     return out;
   }
-  return { analyzeImage, configured: !!(GEMINI_KEY || ANTH_KEY) };
+  return { analyzeImage, analyzeClaim, configured: !!(GEMINI_KEY || ANTH_KEY) };
 };
