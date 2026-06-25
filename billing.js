@@ -72,11 +72,13 @@ module.exports = function billing({ redisOn, redisCmd, readCookie }) {
   /* ---- Pro state (Redis when available, else in-memory) ---- */
   async function isPro(email) {
     if (!email) return false;
+    email = String(email).toLowerCase();
     if (redisOn) { try { return (await redisCmd(['GET', `relity:pro:${email}`])) === 'active'; } catch { /* fall back */ } }
     return memPro.get(email) === 'active';
   }
   async function setPro(email, active) {
     if (!email) return;
+    email = String(email).toLowerCase();
     if (redisOn) { try { if (active) await redisCmd(['SET', `relity:pro:${email}`, 'active']); else await redisCmd(['DEL', `relity:pro:${email}`]); return; } catch { /* fall back */ } }
     if (active) memPro.set(email, 'active'); else memPro.delete(email);
   }
