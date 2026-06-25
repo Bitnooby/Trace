@@ -18,6 +18,7 @@ const NEWS = ['reuters','apnews','bbc.','nytimes','washingtonpost','theguardian'
 const FC   = ['snopes','politifact','factcheck','fullfact','leadstories','checkyourfact','truthorfiction','altnews','boomlive','factly','africacheck','newschecker'];
 const SOCIAL = ['x.com','twitter','facebook','instagram','tiktok','reddit','youtube','youtu.be','threads.net','t.me','telegram','medium.com','substack','quora','linkedin'];
 const AUTH = ['.gov','.edu','.ac.','wikipedia.','britannica.','nature.com','science.org','sciencemag','scientificamerican','nationalgeographic','smithsonian','who.int','un.org','nih.','noaa.','nasa.','usgs.','esa.int','europa.eu','jstor.','pnas.'];
+const LOCAL = ['patch.com','localnews','spectrumlocalnews','spectrumnews','clickorlando','azfamily','localmemphis','wral','wsoctv','wsbtv','wftv','11alive','kxan','kvue','ktla','kcra','king5','wcvb','wbz','ksl.com','abc7','abc11','abc13','abc30','fox5','fox13','fox32','nbc4','cbs2','cbsla','nbcchicago','gazette','tribune','herald','dispatch','courier','sentinel','chronicle','star-','dailynews'];
 
 module.exports = function claims({ SERPAPI_KEY = '', FACTCHECK_KEY = '', ai = null, tierOf = null } = {}) {
 
@@ -53,7 +54,7 @@ module.exports = function claims({ SERPAPI_KEY = '', FACTCHECK_KEY = '', ai = nu
   function bucket(items) {
     const d = (items || []).map(m => (m.link ? hostOf(m.link) : (m.source || '')).toLowerCase());
     const hit = arr => [...new Set(d.filter(x => arr.some(k => x.includes(k))))];
-    return { news: hit(NEWS), fc: hit(FC), social: hit(SOCIAL), auth: hit(AUTH) };
+    return { news: hit(NEWS), fc: hit(FC), social: hit(SOCIAL), auth: hit(AUTH), local: hit(LOCAL) };
   }
 
   function recencyClaim(t) {
@@ -87,8 +88,10 @@ module.exports = function claims({ SERPAPI_KEY = '', FACTCHECK_KEY = '', ai = nu
     const fcHits = relevantFactChecks(query, all);
     if (fcHits.length) {
       const top = fcHits[0];
+      const fcClaim = (top.claim || query || '').toString().slice(0, 140).replace(/[.\s"”]+$/, '');
+      const fcRating = (top.rating || '—').toString().replace(/[.\s"”]+$/, '');
       const cite = (top.publisher || top.rating)
-        ? ` ${top.publisher || 'A fact-checker'} reviewed “${(top.claim || query || '').toString().slice(0, 140)}” and rated it “${top.rating || '—'}.”`
+        ? ` ${top.publisher || 'A fact-checker'} reviewed “${fcClaim}” and rated it “${fcRating}.”`
         : '';
       const ratings = fcHits.map(c => c.rating || '').join(' ');
       if (FALSE_RE.test(ratings)) return { eyebrow: E, level: 'debunk', badge: 'Debunked on record', line: 'A fact-check of this claim rates it false or misleading.' + cite + ' Read it in full before sharing.' };
@@ -96,8 +99,9 @@ module.exports = function claims({ SERPAPI_KEY = '', FACTCHECK_KEY = '', ai = nu
     }
     const credible = [...new Set([...(b.news || []), ...(b.auth || [])])];
     if (credible.length) return { eyebrow: E, level: 'photo', badge: 'Documented by credible sources', line: `Appears on reputable / authoritative sources (${credible.slice(0,3).join(', ')}). A real trail to read — not proof on its own.` + recNote };
+    if (b.local && b.local.length) return { eyebrow: E, level: 'photo', badge: 'Reported by local news', line: `Covered by local news outlets (${b.local.slice(0, 2).join(', ')}) — a real but local trail; verify the specifics.` + recNote };
     if (b.fc.length) return { eyebrow: E, level: 'scrutinize', badge: 'Likely fact-checked', line: `This appears on fact-checking sites (${b.fc.slice(0,2).join(', ')}) — open them and read the conclusion.` + recNote };
-    if (b.social.length) return { eyebrow: E, level: 'scrutinize', badge: 'Circulating on social', line: 'Found mostly on social platforms with no news or fact-check trail — treat as unverified until a credible source confirms it.' + recNote };
+    if (b.social.length) return { eyebrow: E, level: 'scrutinize', badge: 'Circulating on social', line: `Found mostly on social platforms (${b.social.slice(0, 3).join(', ')}) with no news or fact-check trail — widely shared is not the same as verified. Treat as unverified until a credible source confirms it.` + recNote };
     return { eyebrow: E, level: 'scrutinize', badge: 'No record found', line: 'Couldn’t find this discussed on the sources we check — unverified. Absence of a record is not proof either way.' + recNote };
   }
 
