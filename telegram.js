@@ -45,6 +45,16 @@ module.exports = function telegram({ claims, ai, img, video } = {}) {
     return msg;
   }
 
+  async function captionCheck(caption) {
+    const t = (caption || '').toString().trim();
+    if (!t || t.length < 8 || !claims || !claims.analyze) return '';
+    try {
+      const cls = (ai && ai.analyzeClaim) ? await ai.analyzeClaim({ tier: 'free', text: t }).catch(() => null) : null;
+      const r = await claims.analyze(t, cls, 'free');
+      if (r && r.read) return '\n\n🧾 <b>Caption check</b> — ' + esc(r.read.badge) + '\n' + esc(r.read.line);
+    } catch (e) { console.error('captionCheck:', e.message); }
+    return '';
+  }
   async function checkPhoto(chatId, fileId, caption) {
     if (!img || !img.reverseSearch) { await send(chatId, '📷 Image checking isn’t available right now — try ' + BASE + '.'); return; }
     await send(chatId, '🔎 Checking that image…');
@@ -72,12 +82,13 @@ module.exports = function telegram({ claims, ai, img, video } = {}) {
       let msg = '🔎 <b>Relity</b> — evidence, not verdicts\n\n<b>' + esc(rd.badge) + '</b>\n' + esc(rd.line);
       if (report.aiRead && report.aiRead.text) msg += '\n\n<b>AI vision:</b> ' + esc(report.aiRead.text);
       if (reachOK && report.reverse.domains && report.reverse.domains.length) msg += '\n\n<i>Seen on:</i> ' + esc(report.reverse.domains.slice(0, 4).join(', '));
+      msg += await captionCheck(caption);
       msg += '\n\n📄 Full report: ' + BASE + '/check/' + id;
       await send(chatId, msg);
     } catch (e) { console.error('telegram checkPhoto:', e.message); await send(chatId, '⚠️ Something went wrong checking that image. Try again, or use ' + BASE + '.'); }
   }
 
-  async function checkVideoMessage(chatId, fileId) {
+  async function checkVideoMessage(chatId, fileId, caption) {
     if (!video || !video.checkVideo) { await send(chatId, '🎬 Video checking isn’t available right now — try ' + BASE + '.'); return; }
     await send(chatId, '🎬 Checking that video’s frames…');
     try {
@@ -88,6 +99,7 @@ module.exports = function telegram({ claims, ai, img, video } = {}) {
       let msg = '🔎 <b>Relity</b> — evidence, not verdicts\n\n<b>' + esc(rd.badge) + '</b>\n' + esc(rd.line);
       if (out && out.aiRead && out.aiRead.text) msg += '\n\n<b>AI vision (a frame):</b> ' + esc(out.aiRead.text);
       if (out && out.where && out.where.domains && out.where.domains.length) msg += '\n\n<i>Frames seen on:</i> ' + esc(out.where.domains.slice(0, 4).join(', '));
+      msg += await captionCheck(caption);
       msg += '\n\n⚠️ Frame-checking finds where footage already appears online — it is not deepfake detection.';
       await send(chatId, msg);
     } catch (e) { console.error('telegram checkVideoMessage:', e.message); await send(chatId, '⚠️ Something went wrong checking that video. Try a shorter clip, or use ' + BASE + '.'); }
@@ -102,7 +114,7 @@ module.exports = function telegram({ claims, ai, img, video } = {}) {
 
       if (m.photo && m.photo.length) { await checkPhoto(chatId, m.photo[m.photo.length - 1].file_id, m.caption || ''); return; }
       const vid = m.video || m.video_note || (m.document && /^video\//.test(m.document.mime_type || '') ? m.document : null) || (m.animation || null);
-      if (vid && vid.file_id) { await checkVideoMessage(chatId, vid.file_id); return; }
+      if (vid && vid.file_id) { await checkVideoMessage(chatId, vid.file_id, m.caption || ''); return; }
 
       if (/^\/(start|help)\b/.test(text)) {
         await send(chatId, '👋 <b>Relity</b> — evidence, not verdicts.\n\nSend me any of these and I’ll show the evidence:\n• a <b>claim / headline / post</b> → is it a checkable claim backed by evidence, or just opinion?\n• an <b>image</b> → where it appears online + an AI read\n• a <b>video file</b> → where its frames appear online\n\nNote: I can’t open videos from X/social <i>links</i> — download the clip and send the file. Full site: ' + BASE);
