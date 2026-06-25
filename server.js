@@ -292,7 +292,7 @@ app.get('/api/me', async (req, res) => {
   const limit = acct.tier === 'pro' ? billing.PRO_DAILY : FREE_DAILY;
   const used = await quotaGet(id);
   const reset = new Date(); reset.setUTCHours(24, 0, 0, 0);
-  res.json({ tier: acct.tier, email: acct.email || null, used, limit, remaining: Math.max(0, limit - used), resetsAt: reset.toISOString(), loginReady: !!billing.loginReady, googleClientId: billing.googleClientId || null });
+  res.json({ tier: acct.tier, email: acct.email || null, used, limit, remaining: Math.max(0, limit - used), resetsAt: reset.toISOString(), loginReady: !!billing.loginReady, googleClientId: billing.googleClientId || null, webhookReady: !!billing.webhookReady, paymentsReady: !!billing.configured });
 });
 
 /* ---------- fetch an image from a pasted link ----------

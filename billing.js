@@ -188,5 +188,5 @@ module.exports = function billing({ redisOn, redisCmd, readCookie }) {
     });
   }
 
-  return { tierOf, isPro, setPro, getEmail, sessionCookie, mount, PRO_DAILY, configured: on, loginReady: loginOn, googleClientId: GOOGLE_CLIENT_ID };
+  return { tierOf, isPro, setPro, getEmail, sessionCookie, mount, PRO_DAILY, configured: on, loginReady: loginOn, googleClientId: GOOGLE_CLIENT_ID, webhookReady: !!WEBHOOK_SECRET };
 };
