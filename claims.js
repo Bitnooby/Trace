@@ -131,8 +131,21 @@ module.exports = function claims({ SERPAPI_KEY = '', FACTCHECK_KEY = '', ai = nu
     const [fact, web] = await Promise.all([factCheck(claimQ), webSearch(claimQ)]);
     const items = (web.items || []);
     const b = bucket(items);
-    const read = weigh(fact, b, recencyClaim(text), claimQ);
-    if (claimQ && claimQ !== text) read.line = `Checked the factual claim: “${claimQ}”. ` + read.line;
+    let read = weigh(fact, b, recencyClaim(text), claimQ);
+    // Knowledge check: a topic appearing on credible sources is NOT the same as those sources backing the claim.
+    // If the AI is confident the claim contradicts/matches well-established fact, lead with that.
+    // A real fact-check debunk (read.level === 'debunk') always takes priority over the AI's knowledge.
+    const ks = cls && cls.knownStatus;
+    const corr = (cls && cls.correction) ? cls.correction.trim().replace(/[.\s]+$/, '') : '';
+    const credSrc = [...new Set([...(b.news || []), ...(b.auth || [])])];
+    const srcNote = credSrc.length ? ` Credible sources discuss the topic (${credSrc.slice(0, 2).join(', ')}) — read them, not just the headline.` : '';
+    if (ks === 'contradicted' && read.level !== 'debunk') {
+      read = { eyebrow: EYEBROW, level: 'debunk', badge: 'Contradicts established facts', line: `“${claimQ}” runs against well-established knowledge${corr ? ' — ' + corr : ''}.${srcNote}` };
+    } else if (ks === 'supported' && read.level !== 'debunk') {
+      read = { eyebrow: EYEBROW, level: 'photo', badge: 'Matches established facts', line: `“${claimQ}” is consistent with well-established knowledge${corr ? ' — ' + corr : ''}.${srcNote} Still your call on the specifics.` };
+    } else if (claimQ && claimQ !== text) {
+      read.line = `Checked the factual claim: “${claimQ}”. ` + read.line;
+    }
     if (cls && cls.opinion) read.line += ` The poster’s own framing — “${cls.opinion}” — is opinion, not something Relity can verify.`;
     return { text, kind, claim: claimQ, classifier: cls || null, read, fact, sources: { count: items.length, items, buckets: b } };
   }

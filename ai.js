@@ -85,9 +85,10 @@ module.exports = function ai({ redisOn, redisCmd } = {}) {
   const claimPrompt = (text) =>
     'You are the text-analysis layer of Relity, a media-verification tool. Read the TEXT (a social post, caption, question, or news snippet) and SEPARATE fact from opinion. ' +
     'Reply with STRICT minified JSON ONLY (no markdown, no code fence), exactly this shape: ' +
-    '{"kind":"opinion|claim|mixed|question","claim":"<the single most important CHECKABLE factual assertion, or for a question the topic to search, as a concise neutral phrase; empty string if none>","opinion":"<the poster\'s subjective take, framing, emotion or judgement, in a short phrase; empty string if none>","answer":"<if the TEXT is a question, a concise factual answer from well-established collective knowledge (say if uncertain); empty string otherwise>","note":"<one short sentence explaining your call>"} ' +
+    '{"kind":"opinion|claim|mixed|question","claim":"<the single most important CHECKABLE factual assertion, or for a question the topic to search, as a concise neutral phrase; empty string if none>","opinion":"<the poster\'s subjective take, framing, emotion or judgement, in a short phrase; empty string if none>","answer":"<if the TEXT is a question, a concise factual answer from well-established collective knowledge (say if uncertain); empty string otherwise>","knownStatus":"supported|contradicted|unsure","correction":"<one short sentence stating the accurate well-established fact, ONLY when knownStatus is supported or contradicted; empty otherwise>","note":"<one short sentence explaining your call>"} ' +
     'Definitions: question = the TEXT asks something. opinion = value judgments, predictions, feelings, sarcasm, or unfalsifiable statements. claim = a concrete verifiable assertion of fact. mixed = a checkable fact wrapped in opinion or framing. ' +
-    'Put the factual core (or the question topic) in "claim", the subjective part in "opinion", and answer any question in "answer". Do NOT judge whether a claim is true; only classify, separate, and answer questions. ' +
+    'knownStatus: judge the claim ONLY against well-established, uncontroversial knowledge (settled science, history, geography, math). Use "contradicted" if it clearly conflicts with such facts (e.g. "there are 5 planets in the solar system") and give the correct fact in "correction". Use "supported" if it clearly matches well-established facts. Use "unsure" for ANYTHING contested, political, recent or current-events, niche, or that you are not highly confident about — when in any doubt, choose "unsure". ' +
+    'Put the factual core (or the question topic) in "claim", the subjective part in "opinion", and answer any question in "answer". ' +
     'TEXT: """' + String(text || '').slice(0, 1200) + '"""';
   async function analyzeClaim({ tier, text } = {}) {
     text = (text || '').toString().trim();
@@ -104,7 +105,7 @@ module.exports = function ai({ redisOn, redisCmd } = {}) {
     const parsed = parseJsonBlock(raw);
     if (!parsed || !parsed.kind) return null;
     const kind = ['opinion', 'claim', 'mixed', 'question'].includes(parsed.kind) ? parsed.kind : 'claim';
-    const out = { kind, claim: String(parsed.claim || '').slice(0, 300), opinion: String(parsed.opinion || '').slice(0, 300), answer: String(parsed.answer || '').slice(0, 400), note: String(parsed.note || '').slice(0, 300),
+    const out = { kind, claim: String(parsed.claim || '').slice(0, 300), opinion: String(parsed.opinion || '').slice(0, 300), answer: String(parsed.answer || '').slice(0, 400), knownStatus: ['supported', 'contradicted', 'unsure'].includes(parsed.knownStatus) ? parsed.knownStatus : 'unsure', correction: String(parsed.correction || '').slice(0, 300), note: String(parsed.note || '').slice(0, 300),
       provider, model: provider === 'anthropic' ? ANTH_MODEL : GEMINI_MODEL, tierLabel: provider === 'anthropic' ? 'Claude · Pro' : 'Gemini' };
     await cacheSet(ckey, out);
     return out;
