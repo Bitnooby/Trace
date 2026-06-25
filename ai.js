@@ -4,6 +4,7 @@ module.exports = function ai({ redisOn, redisCmd } = {}) {
   const ANTH_KEY      = process.env.ANTHROPIC_API_KEY || '';
   const ANTH_MODEL    = process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5-20251001';
   const mem = new Map();
+  const fetchT = (url, opts, ms) => { const c = new AbortController(); const t = setTimeout(() => c.abort(), ms || 15000); return fetch(url, Object.assign({}, opts || {}, { signal: c.signal })).finally(() => clearTimeout(t)); };
   const prompt = (caption, evidence) =>
     'You are the forensic vision layer of Relity, a media-verification tool whose rule is "evidence, not a verdict." ' +
     'Examine the image closely, like an analyst, and report ONLY what is visible. Actively scan for the tell-tale signs of AI generation or photo manipulation: ' +
@@ -29,7 +30,7 @@ module.exports = function ai({ redisOn, redisCmd } = {}) {
           const gen = { maxOutputTokens: 1024, temperature: 0.2 };
           if (noThink) gen.thinkingConfig = { thinkingBudget: 0 };
           const u = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_KEY}`;
-          const r = await fetch(u, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          const r = await fetchT(u, { method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ contents: [{ parts: [{ text: p }, { inline_data: { mime_type: mime, data: b64 } }] }], generationConfig: gen }) });
           const j = await r.json();
           if (!r.ok) { lastErr = 'gemini ' + model + ' HTTP ' + r.status + ' ' + JSON.stringify((j && j.error && j.error.message) || '').slice(0, 140); continue; }
@@ -42,7 +43,7 @@ module.exports = function ai({ redisOn, redisCmd } = {}) {
     throw new Error(lastErr);
   }
   async function anthropic(b64, mime, p) {
-    const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST',
+    const r = await fetchT('https://api.anthropic.com/v1/messages', { method: 'POST',
       headers: { 'x-api-key': ANTH_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
       body: JSON.stringify({ model: ANTH_MODEL, max_tokens: 500, messages: [{ role: 'user', content: [
         { type: 'text', text: p }, { type: 'image', source: { type: 'base64', media_type: mime, data: b64 } } ] }] }) });
@@ -63,7 +64,7 @@ module.exports = function ai({ redisOn, redisCmd } = {}) {
           const gen = { maxOutputTokens: 512, temperature: 0 };
           if (noThink) gen.thinkingConfig = { thinkingBudget: 0 };
           const u = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_KEY}`;
-          const r = await fetch(u, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contents: [{ parts: [{ text: p }] }], generationConfig: gen }) });
+          const r = await fetchT(u, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contents: [{ parts: [{ text: p }] }], generationConfig: gen }) });
           const j = await r.json();
           if (!r.ok) { lastErr = 'gemini ' + model + ' HTTP ' + r.status; continue; }
           const t = ((((j.candidates || [])[0] || {}).content || {}).parts || [{}])[0].text || '';
@@ -75,7 +76,7 @@ module.exports = function ai({ redisOn, redisCmd } = {}) {
     throw new Error(lastErr);
   }
   async function anthropicText(p) {
-    const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST',
+    const r = await fetchT('https://api.anthropic.com/v1/messages', { method: 'POST',
       headers: { 'x-api-key': ANTH_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
       body: JSON.stringify({ model: ANTH_MODEL, max_tokens: 400, messages: [{ role: 'user', content: [{ type: 'text', text: p }] }] }) });
     const j = await r.json();

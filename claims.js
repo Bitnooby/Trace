@@ -21,12 +21,13 @@ const AUTH = ['.gov','.edu','.ac.','wikipedia.','britannica.','nature.com','scie
 const LOCAL = ['patch.com','localnews','spectrumlocalnews','spectrumnews','clickorlando','azfamily','localmemphis','wral','wsoctv','wsbtv','wftv','11alive','kxan','kvue','ktla','kcra','king5','wcvb','wbz','ksl.com','abc7','abc11','abc13','abc30','fox5','fox13','fox32','nbc4','cbs2','cbsla','nbcchicago','gazette','tribune','herald','dispatch','courier','sentinel','chronicle','star-','dailynews'];
 
 module.exports = function claims({ SERPAPI_KEY = '', FACTCHECK_KEY = '', ai = null, tierOf = null } = {}) {
+  const fetchT = (url, opts, ms) => { const cc = new AbortController(); const t = setTimeout(() => cc.abort(), ms || 12000); return fetch(url, Object.assign({}, opts || {}, { signal: cc.signal })).finally(() => clearTimeout(t)); };
 
   async function factCheck(q) {
     if (!FACTCHECK_KEY) return { connected: false };
     try {
       const u = `https://factchecktools.googleapis.com/v1alpha1/claims:search?query=${encodeURIComponent(q)}&key=${FACTCHECK_KEY}`;
-      const j = await (await fetch(u)).json();
+      const j = await (await fetchT(u)).json();
       const out = [];
       for (const c of (j.claims || [])) {
         const r = (c.claimReview || [])[0] || {};
@@ -40,7 +41,7 @@ module.exports = function claims({ SERPAPI_KEY = '', FACTCHECK_KEY = '', ai = nu
     if (!SERPAPI_KEY) return { connected: false };
     try {
       const u = `https://serpapi.com/search.json?engine=google&q=${encodeURIComponent(q)}&num=10&api_key=${SERPAPI_KEY}`;
-      const j = await (await fetch(u)).json();
+      const j = await (await fetchT(u)).json();
       if (j.error) return { connected: true, degraded: true };
       const items = (j.organic_results || []).slice(0, 10).map(r => ({
         title: r.title, link: r.link, source: r.source || hostOf(r.link), date: r.date || null, snippet: r.snippet || ''
