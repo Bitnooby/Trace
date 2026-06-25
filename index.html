@@ -7,6 +7,7 @@
 <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 <link rel="manifest" href="/site.webmanifest" />
 <meta name="theme-color" content="#0B6E6E" />
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <meta name="description" content="Relity shows whether an image, video, or claim is real — its provenance, where it appears online, and AI signals — then lets you decide. Evidence, not a verdict." />
 <meta property="og:title" content="Relity — Is it real?" />
 <meta property="og:description" content="Paste an image, a video, or a link/post from anywhere. Relity shows the evidence — you make the call." />
@@ -236,9 +237,13 @@
     <p class="reassure">No sign-up · your image never leaves your device for the file checks</p>
     <p class="tip">Copy <b>any image or link</b> from anywhere, then paste it here — <b>Ctrl / ⌘ V</b>.</p>
     <p class="tip" id="acctLine" style="margin-top:10px"></p>
-    <div id="loginBox" style="display:none;justify-content:center;gap:6px;margin-top:8px">
-      <input type="email" id="loginEmail" placeholder="you@email.com" style="max-width:230px" />
-      <button class="btn ghost" id="loginSend" type="button">Email me a link</button>
+    <div id="loginBox" style="display:none;flex-direction:column;align-items:center;gap:8px;margin-top:8px">
+      <div id="gbtn" style="display:none"></div>
+      <div class="tip" id="gOr" style="display:none;opacity:.6;margin:0">or use email</div>
+      <div style="display:flex;justify-content:center;gap:6px">
+        <input type="email" id="loginEmail" placeholder="you@email.com" style="max-width:230px" />
+        <button class="btn ghost" id="loginSend" type="button">Email me a link</button>
+      </div>
     </div>
     <p class="tip" id="loginMsg" style="display:none;margin-top:6px"></p>
     <p class="tip" id="iosHint" style="display:none;margin-top:8px"></p>
@@ -842,10 +847,34 @@ async function checkVideo(file){
 })();
 
 /* ----- account + free-quota indicator (no login needed to use the tool) ----- */
+var GCID='', gBtnDone=false, gTries=0;
+function initGoogle(){
+  if(gBtnDone) return;
+  if(!GCID || !(window.google&&google.accounts&&google.accounts.id)){ if(gTries++<25) setTimeout(initGoogle,300); return; }
+  try{
+    google.accounts.id.initialize({client_id:GCID, callback:onGoogleCred});
+    var el=$('#gbtn'); if(el){ el.style.display=''; el.innerHTML=''; google.accounts.id.renderButton(el,{theme:'filled_blue',size:'large',text:'continue_with',shape:'pill'}); }
+    var go=$('#gOr'); if(go) go.style.display='';
+    gBtnDone=true;
+  }catch(e){}
+}
+function onGoogleCred(resp){
+  var msg=$('#loginMsg'), base=apiBase();
+  if(!resp||!resp.credential||!base) return;
+  if(msg){ msg.style.display='block'; msg.textContent='Signing in…'; }
+  fetch(base+'/api/auth/google',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({credential:resp.credential})})
+    .then(function(r){return r.json();})
+    .then(function(j){
+      if(j&&j.ok){ if(msg) msg.textContent=(j.tier==='pro')?'Signed in — Relity Pro active.':'Signed in.'; var lb=$('#loginBox'); if(lb) lb.style.display='none'; refreshMe(); }
+      else if(msg) msg.textContent=(j&&j.error)||'Google sign-in failed.';
+    })
+    .catch(function(){ if(msg) msg.textContent='Google sign-in failed.'; });
+}
 async function refreshMe(){
   const base=apiBase(); const el=$('#acctLine'); if(!base||!el) return;
   try{
     const m=await (await fetch(base+'/api/me')).json();
+    GCID=m.googleClientId||'';
     if(m.tier==='pro'){
       el.innerHTML=`✓ <b>Relity Pro</b> — unlimited web cross-checks${m.email?` · <span style="opacity:.75">${esc(m.email)}</span>`:''} · <a href="#" id="outBtn" style="color:var(--signal);font-weight:600;text-decoration:none">Log out</a>`;
     } else {
@@ -859,7 +888,7 @@ async function refreshMe(){
 function toggleLogin(){
   const b=$('#loginBox'); if(!b) return;
   const open=b.style.display!=='none'; b.style.display=open?'none':'flex';
-  if(!open){ const e=$('#loginEmail'); if(e) e.focus(); }
+  if(!open){ initGoogle(); const e=$('#loginEmail'); if(e) e.focus(); }
 }
 async function sendLogin(){
   const base=apiBase(); const e=$('#loginEmail'); const msg=$('#loginMsg');

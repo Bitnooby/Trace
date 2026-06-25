@@ -29,6 +29,7 @@ module.exports = function billing({ redisOn, redisCmd, readCookie }) {
   const RESEND_KEY = process.env.RESEND_API_KEY || '';
   const MAIL_FROM  = process.env.RELITY_MAIL_FROM || 'Relity <noreply@relity.ai>';
   const loginOn    = !!RESEND_KEY;
+  const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
 
   let stripe = null;
   if (STRIPE_SECRET) { try { stripe = require('stripe')(STRIPE_SECRET); } catch (e) { console.error('stripe lib not installed:', e.message); } }
@@ -149,6 +150,23 @@ module.exports = function billing({ redisOn, redisCmd, readCookie }) {
       res.redirect(302, '/?login=ok');
     });
 
+    // Sign in with Google: verify the ID token (Google checks signature+expiry), enforce aud, then sign in.
+    app.post('/api/auth/google', async (req, res) => {
+      if (!GOOGLE_CLIENT_ID) return res.status(503).json({ error: 'Google sign-in isn’t set up yet.' });
+      const cred = String((req.body && req.body.credential) || '');
+      if (!cred) return res.status(400).json({ error: 'Missing credential.' });
+      try {
+        const r = await fetch('https://oauth2.googleapis.com/tokeninfo?id_token=' + encodeURIComponent(cred));
+        const p = await r.json();
+        if (!r.ok || !p.email) return res.status(401).json({ error: 'Could not verify Google sign-in.' });
+        if (p.aud !== GOOGLE_CLIENT_ID) return res.status(401).json({ error: 'Sign-in token was not issued for Relity.' });
+        if (!(p.email_verified === true || p.email_verified === 'true')) return res.status(401).json({ error: 'That Google email isn’t verified.' });
+        const email = String(p.email).toLowerCase();
+        res.setHeader('Set-Cookie', sessionCookie(email));
+        res.json({ ok: true, tier: (await isPro(email)) ? 'pro' : 'free', email });
+      } catch (e) { console.error('google auth:', e.message); res.status(500).json({ error: 'Google sign-in failed. Try again.' }); }
+    });
+
     // Stripe webhook — keep Pro in sync with the subscription lifecycle. Needs the RAW body.
     app.post('/webhook/stripe', express.raw({ type: 'application/json' }), async (req, res) => {
       if (!stripe || !WEBHOOK_SECRET) return res.status(503).end();
@@ -168,5 +186,5 @@ module.exports = function billing({ redisOn, redisCmd, readCookie }) {
     });
   }
 
-  return { tierOf, isPro, setPro, getEmail, sessionCookie, mount, PRO_DAILY, configured: on, loginReady: loginOn };
+  return { tierOf, isPro, setPro, getEmail, sessionCookie, mount, PRO_DAILY, configured: on, loginReady: loginOn, googleClientId: GOOGLE_CLIENT_ID };
 };
