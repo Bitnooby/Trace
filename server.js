@@ -133,6 +133,7 @@ const billing = require('./billing')({ redisOn, redisCmd, readCookie });
 const ai      = require('./ai')({ redisOn, redisCmd });
 const claims  = require('./claims')({ SERPAPI_KEY, FACTCHECK_KEY, ai, tierOf: billing.tierOf });
 const video   = require('./video')({ SERPAPI_KEY, putImage });
+const telegram = require('./telegram')({ claims, ai });
 async function meteredGate(name, req, res, next) {
   if (!(await allow(name, clientIp(req), RL_PUBLISH.max, RL_PUBLISH.win)))
     return res.status(429).json({ error: 'Too many checks right now — give it a moment.' });
@@ -292,7 +293,7 @@ app.get('/api/me', async (req, res) => {
   const limit = acct.tier === 'pro' ? billing.PRO_DAILY : FREE_DAILY;
   const used = await quotaGet(id);
   const reset = new Date(); reset.setUTCHours(24, 0, 0, 0);
-  res.json({ tier: acct.tier, email: acct.email || null, used, limit, remaining: Math.max(0, limit - used), resetsAt: reset.toISOString(), loginReady: !!billing.loginReady, googleClientId: billing.googleClientId || null, webhookReady: !!billing.webhookReady, paymentsReady: !!billing.configured });
+  res.json({ tier: acct.tier, email: acct.email || null, used, limit, remaining: Math.max(0, limit - used), resetsAt: reset.toISOString(), loginReady: !!billing.loginReady, googleClientId: billing.googleClientId || null, webhookReady: !!billing.webhookReady, paymentsReady: !!billing.configured, telegramReady: !!telegram.configured });
 });
 
 /* ---------- fetch an image from a pasted link ----------
@@ -595,6 +596,7 @@ function page(title, body, base, og) {
 billing.mount(app, express);
 app.use('/api/check-claim', (req, res, next) => meteredGate('claim', req, res, next));
 claims.mount(app);
+telegram.mount(app);
 app.use('/api/check-video', (req, res, next) => meteredGate('video', req, res, next));
 video.mount(app, uploadVideo);
 
@@ -635,4 +637,4 @@ app.get('/privacy', (req, res) => {
 </main></body></html>`);
 });
 
-app.listen(PORT, () => console.log(`Relity running on http://localhost:${PORT}`));
+app.listen(PORT, () => { console.log(`Relity running on http://localhost:${PORT}`); telegram.register(); });
