@@ -82,6 +82,7 @@ module.exports = function telegram({ claims, ai, img, video } = {}) {
       let msg = '🔎 <b>Relity</b> — evidence, not verdicts\n\n<b>' + esc(rd.badge) + '</b>\n' + esc(rd.line);
       if (report.aiRead && report.aiRead.text) msg += '\n\n<b>AI vision:</b> ' + esc(report.aiRead.text);
       if (reachOK && report.reverse.domains && report.reverse.domains.length) msg += '\n\n<i>Seen on:</i> ' + esc(report.reverse.domains.slice(0, 4).join(', '));
+      try { const ts = ((report.reverse && report.reverse.matches) || []).map(m => m && m.title).filter(Boolean); if (reachOK && ts.length >= 2 && ai && ai.identifyEvent) { const ev = await ai.identifyEvent({ tier: 'free', titles: ts }); if (ev && ev.event) msg += '\n\n📰 <b>Appears in coverage of:</b> ' + esc(ev.event); } } catch (e) {}
       msg += await captionCheck(caption);
       msg += '\n\n📄 Full report: ' + BASE + '/check/' + id;
       await send(chatId, msg);
@@ -99,6 +100,7 @@ module.exports = function telegram({ claims, ai, img, video } = {}) {
       let msg = '🔎 <b>Relity</b> — evidence, not verdicts\n\n<b>' + esc(rd.badge) + '</b>\n' + esc(rd.line);
       if (out && out.aiRead && out.aiRead.text) msg += '\n\n<b>AI vision (a frame):</b> ' + esc(out.aiRead.text);
       if (out && out.where && out.where.domains && out.where.domains.length) msg += '\n\n<i>Frames seen on:</i> ' + esc(out.where.domains.slice(0, 4).join(', '));
+      if (out && out.where && out.where.event) msg += '\n\n📰 <b>Appears in coverage of:</b> ' + esc(out.where.event);
       msg += await captionCheck(caption);
       msg += '\n\n⚠️ Frame-checking finds where footage already appears online — it is not deepfake detection.';
       await send(chatId, msg);

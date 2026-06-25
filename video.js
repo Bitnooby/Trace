@@ -73,7 +73,7 @@ module.exports = function video({ SERPAPI_KEY = '', putImage, ai } = {}) {
       const matches = vm.slice(0, 8).map(m => ({ title: m.title, source: m.source, link: m.link, date: m.date || null }));
       const domains = [...new Set(vm.map(m => hostOf(m.link) || (m.source || '').toLowerCase()).filter(Boolean))].slice(0, 8);
       const dated = matches.filter(m => m.date).sort((a, b) => new Date(a.date) - new Date(b.date));
-      return { connected: true, count: vm.length, domains, earliest: dated[0] || null };
+      return { connected: true, count: vm.length, domains, earliest: dated[0] || null, matches };
     } catch { return { connected: true, degraded: true }; }
   }
   function interpretDomains(domains) {
@@ -122,7 +122,12 @@ module.exports = function video({ SERPAPI_KEY = '', putImage, ai } = {}) {
         aiRead = await ai.analyzeImage({ tier: 'free', sha: fsha, buffer: frame, mime: 'image/jpeg', caption: null });
       }
     } catch (e) { console.error('video aiRead:', e.message); }
-    return { read: weigh(interp, totalCount, vintageYear(earliest)), where: { domains: allDomains.slice(0, 8), count: totalCount, earliest }, aiRead };
+    let event = null;
+    try {
+      const titles = [...new Set(per.flatMap(f => (f.rev.matches || []).map(m => m && m.title)).filter(Boolean))].slice(0, 8);
+      if (ai && ai.identifyEvent && titles.length >= 2) { const ev = await ai.identifyEvent({ tier: 'free', titles }); if (ev && ev.event) event = ev.event; }
+    } catch (e) { console.error('video identifyEvent:', e.message); }
+    return { read: weigh(interp, totalCount, vintageYear(earliest)), where: { domains: allDomains.slice(0, 8), count: totalCount, earliest, event }, aiRead };
   }
 
   function mount(app, uploadVideo) {

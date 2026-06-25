@@ -160,5 +160,27 @@ module.exports = function ai({ redisOn, redisCmd } = {}) {
     await cacheSet(key, out);
     return out;
   }
-  return { analyzeImage, analyzeClaim, synthesizeEvidence, configured: !!(GEMINI_KEY || ANTH_KEY) };
+  function eventPrompt(titles) {
+    const t = (titles || []).slice(0, 8).filter(Boolean).map((x, i) => `${i + 1}. ${String(x).slice(0, 140)}`).join('\n');
+    return 'You are Relity. Below are TITLES of web/news results that a photo or video matched. If they clearly describe ONE specific real-world event or subject, name it in a short neutral phrase (include place/time if evident). If they are unrelated, generic, or unclear, return empty. ' +
+      'Reply STRICT minified JSON only: {"event":"<short phrase naming the event or subject, e.g. the 2026 Venezuela earthquake; empty string if unclear>"}. Do not invent details not supported by the titles. ' +
+      'TITLES:\n' + t;
+  }
+  async function identifyEvent({ tier, titles } = {}) {
+    const list = (titles || []).filter(Boolean);
+    if (list.length < 2) return null;
+    const provider = (tier === 'pro' && ANTH_KEY) ? 'anthropic' : (GEMINI_KEY ? 'gemini' : null);
+    if (!provider) return null;
+    const key = `relity:evt:${require('crypto').createHash('sha256').update(provider + ':' + list.join('|')).digest('hex').slice(0, 16)}`;
+    const cached = await cacheGet(key); if (cached) return cached;
+    let raw;
+    try { raw = provider === 'anthropic' ? await anthropicText(eventPrompt(list)) : await geminiText(eventPrompt(list)); }
+    catch (e) { console.error('identifyEvent:', e.message); return null; }
+    const p = parseJsonBlock(raw);
+    const event = (p && p.event) ? String(p.event).slice(0, 160).trim() : '';
+    const out = { event };
+    await cacheSet(key, out);
+    return out;
+  }
+  return { analyzeImage, analyzeClaim, synthesizeEvidence, identifyEvent, configured: !!(GEMINI_KEY || ANTH_KEY) };
 };
