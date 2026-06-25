@@ -136,5 +136,28 @@ module.exports = function ai({ redisOn, redisCmd } = {}) {
     if (sha) await cacheSet(ckey, out);
     return out;
   }
-  return { analyzeImage, analyzeClaim, configured: !!(GEMINI_KEY || ANTH_KEY) };
+  function synthesisPrompt(claim, snippets) {
+    const s = (snippets || []).slice(0, 5).map((x, i) => `${i + 1}. [${x.source || ''}] ${x.title || ''} — ${(x.snippet || '').toString().slice(0, 220)}`).join('\n');
+    return 'You are the evidence layer of Relity. Using ONLY the SNIPPETS below from web search results, judge whether they support, refute, are mixed on, or do not address the CLAIM. ' +
+      'Reply with STRICT minified JSON only: {"stance":"support|refute|mixed|unaddressed","summary":"<one neutral sentence on what these sources indicate about the claim; use only what the snippets say, add no outside facts>"}. ' +
+      'Be conservative — if the snippets do not clearly speak to the claim, use "unaddressed". Do not declare the claim true or false; only report what the sources indicate. ' +
+      'CLAIM: "' + String(claim || '').slice(0, 200) + '"\nSNIPPETS:\n' + s;
+  }
+  async function synthesizeEvidence({ tier, claim, snippets } = {}) {
+    claim = (claim || '').toString().trim();
+    if (!claim || !snippets || !snippets.length) return null;
+    const provider = (tier === 'pro' && ANTH_KEY) ? 'anthropic' : (GEMINI_KEY ? 'gemini' : null);
+    if (!provider) return null;
+    const key = `relity:syn:${require('crypto').createHash('sha256').update(provider + ':' + claim + ':' + snippets.map(s => s.title || '').join('|')).digest('hex').slice(0, 16)}`;
+    const cached = await cacheGet(key); if (cached) return cached;
+    let raw;
+    try { raw = provider === 'anthropic' ? await anthropicText(synthesisPrompt(claim, snippets)) : await geminiText(synthesisPrompt(claim, snippets)); }
+    catch (e) { console.error('synthesizeEvidence:', e.message); return null; }
+    const p = parseJsonBlock(raw);
+    if (!p || !p.summary) return null;
+    const out = { stance: ['support', 'refute', 'mixed', 'unaddressed'].includes(p.stance) ? p.stance : 'unaddressed', summary: String(p.summary).slice(0, 300) };
+    await cacheSet(key, out);
+    return out;
+  }
+  return { analyzeImage, analyzeClaim, synthesizeEvidence, configured: !!(GEMINI_KEY || ANTH_KEY) };
 };

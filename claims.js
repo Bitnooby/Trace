@@ -43,7 +43,7 @@ module.exports = function claims({ SERPAPI_KEY = '', FACTCHECK_KEY = '', ai = nu
       const j = await (await fetch(u)).json();
       if (j.error) return { connected: true, degraded: true };
       const items = (j.organic_results || []).slice(0, 10).map(r => ({
-        title: r.title, link: r.link, source: r.source || hostOf(r.link), date: r.date || null
+        title: r.title, link: r.link, source: r.source || hostOf(r.link), date: r.date || null, snippet: r.snippet || ''
       }));
       return { connected: true, items };
     } catch { return { connected: true, degraded: true }; }
@@ -106,7 +106,7 @@ module.exports = function claims({ SERPAPI_KEY = '', FACTCHECK_KEY = '', ai = nu
   }
 
   const EYEBROW = 'Consensus — the evidence, weighed';
-  async function analyze(text, cls) {
+  async function analyze(text, cls, tier) {
     text = (text || '').toString().slice(0, 1200).trim();
     if (!text) return { error: 'Enter a claim, caption, or post to check.' };
     const kind = (cls && cls.kind) ? cls.kind : 'claim';
@@ -150,6 +150,12 @@ module.exports = function claims({ SERPAPI_KEY = '', FACTCHECK_KEY = '', ai = nu
     } else if (claimQ && claimQ !== text) {
       read.line = `Checked the factual claim: “${claimQ}”. ` + read.line;
     }
+    if (ks !== 'contradicted' && ks !== 'supported' && read.level !== 'debunk' && items.length && ai && ai.synthesizeEvidence) {
+      const snips = items.filter(i => i.snippet).slice(0, 5).map(i => ({ title: i.title, source: i.source, snippet: i.snippet }));
+      if (snips.length) {
+        try { const syn = await ai.synthesizeEvidence({ tier: tier || 'free', claim: claimQ, snippets: snips }); if (syn && syn.summary) read.line += ' What the top sources indicate: ' + syn.summary; } catch {}
+      }
+    }
     if (cls && cls.opinion) read.line += ` The poster’s own framing — “${cls.opinion}” — is opinion, not something Relity can verify.`;
     return { text, kind, claim: claimQ, classifier: cls || null, read, fact, sources: { count: items.length, items, buckets: b } };
   }
@@ -158,13 +164,11 @@ module.exports = function claims({ SERPAPI_KEY = '', FACTCHECK_KEY = '', ai = nu
     app.post('/api/check-claim', async (req, res) => {
       try {
         const text = req.body && req.body.text;
+        let tier = 'free';
+        try { if (tierOf) tier = (await tierOf(req)).tier || 'free'; } catch {}
         let cls = null;
-        if (ai && ai.analyzeClaim) {
-          let tier = 'free';
-          try { if (tierOf) tier = (await tierOf(req)).tier || 'free'; } catch {}
-          cls = await ai.analyzeClaim({ tier, text }).catch(() => null);
-        }
-        res.json(await analyze(text, cls));
+        if (ai && ai.analyzeClaim) { cls = await ai.analyzeClaim({ tier, text }).catch(() => null); }
+        res.json(await analyze(text, cls, tier));
       } catch (e) { res.status(500).json({ error: e.message }); }
     });
   }
