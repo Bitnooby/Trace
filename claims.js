@@ -63,15 +63,34 @@ module.exports = function claims({ SERPAPI_KEY = '', FACTCHECK_KEY = '', ai = nu
   }
 
   const FALSE_RE = /false|pants on fire|fake|hoax|misleading|no evidence|incorrect|debunk|unfounded|baseless/i;
+  const STOP = new Set(['the','a','an','is','are','was','were','of','in','on','to','and','or','that','this','it','its','for','with','as','at','by','be','been','has','have','had','do','does','did','no','not','will','can','could','would','should','may','might','from','about','into','than','then','there','their','they','you','your','our','but','if','so']);
+  const keyTokens = s => new Set(String(s || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(w => w.length > 2 && !STOP.has(w)));
+  // Google's fact-check API returns loose keyword matches. Treating ANY "false"-rated result as a debunk
+  // produces false "debunked" verdicts (e.g. a true "water on the Moon" claim). Only count a fact-check
+  // whose own claim text actually overlaps the claim we're checking.
+  function relevantFactChecks(query, list) {
+    const q = keyTokens(query);
+    if (!q.size) return list || [];
+    return (list || []).filter(c => {
+      const ct = keyTokens(c.claim);
+      let overlap = 0; for (const w of q) if (ct.has(w)) overlap++;
+      return q.size <= 2 ? overlap >= q.size : overlap / q.size >= 0.5;
+    });
+  }
 
-  function weigh(fact, b, recent) {
+  function weigh(fact, b, recent, query) {
     const E = 'Consensus — the evidence, weighed';
     const recNote = recent ? ' It frames itself as recent/breaking — be extra careful, recycled claims often do.' : '';
-    const fcHits = (fact && fact.connected && (fact.claims || []).length) ? fact.claims : [];
+    const all = (fact && fact.connected && (fact.claims || [])) || [];
+    const fcHits = relevantFactChecks(query, all);
     if (fcHits.length) {
+      const top = fcHits[0];
+      const cite = (top.publisher || top.rating)
+        ? ` ${top.publisher || 'A fact-checker'} reviewed “${(top.claim || query || '').toString().slice(0, 140)}” and rated it “${top.rating || '—'}.”`
+        : '';
       const ratings = fcHits.map(c => c.rating || '').join(' ');
-      if (FALSE_RE.test(ratings)) return { eyebrow: E, level: 'debunk', badge: 'Debunked on record', line: 'Fact-checkers have rated this false or misleading — the strongest signal there is. Read their work before sharing.' };
-      return { eyebrow: E, level: 'scrutinize', badge: 'On the fact-check record', line: 'Fact-checkers have addressed this claim — read their verdict before trusting it.' + recNote };
+      if (FALSE_RE.test(ratings)) return { eyebrow: E, level: 'debunk', badge: 'Debunked on record', line: 'A fact-check of this claim rates it false or misleading.' + cite + ' Read it in full before sharing.' };
+      return { eyebrow: E, level: 'scrutinize', badge: 'On the fact-check record', line: 'Fact-checkers have addressed this claim.' + cite + ' Read their verdict before trusting it.' + recNote };
     }
     if (b.news.length) return { eyebrow: E, level: 'photo', badge: 'Covered by news outlets', line: `Reported by reputable outlets (${b.news.slice(0,2).join(', ')}). Coverage is a real trail to read — not proof on its own.` + recNote };
     if (b.fc.length) return { eyebrow: E, level: 'scrutinize', badge: 'Likely fact-checked', line: `This appears on fact-checking sites (${b.fc.slice(0,2).join(', ')}) — open them and read the conclusion.` + recNote };
@@ -94,7 +113,7 @@ module.exports = function claims({ SERPAPI_KEY = '', FACTCHECK_KEY = '', ai = nu
     const [fact, web] = await Promise.all([factCheck(claimQ), webSearch(claimQ)]);
     const items = (web.items || []);
     const b = bucket(items);
-    const read = weigh(fact, b, recencyClaim(text));
+    const read = weigh(fact, b, recencyClaim(text), claimQ);
     if (kind === 'mixed') read.line = 'This mixes opinion with a checkable claim. ' + read.line;
     if (claimQ && claimQ !== text) read.line = `Checked the factual claim: “${claimQ}”. ` + read.line;
     return { text, kind, claim: claimQ, classifier: cls || null, read, fact, sources: { count: items.length, items, buckets: b } };
