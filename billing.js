@@ -127,6 +127,7 @@ module.exports = function billing({ redisOn, redisCmd, readCookie }) {
       const email = String((req.body && req.body.email) || '').trim().toLowerCase();
       if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return res.status(400).json({ error: 'Enter a valid email.' });
       if (!loginOn) return res.status(503).json({ error: 'Email login isn’t set up yet.' });
+      if (!(await isPro(email))) return res.json({ ok: false, notPro: true });
       try {
         const payload = b64(JSON.stringify({ e: email, x: Date.now() + 30 * 60 * 1000 }));
         const tok = `${payload}.${sig(payload)}`;
