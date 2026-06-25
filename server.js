@@ -526,6 +526,14 @@ app.get('/check/:id', async (req, res) => {
   const rbCls = { ai: 'rb-red', debunk: 'rb-red', verified: 'rb-green', photo: 'rb-blue', scrutinize: 'rb-amber' }[rd.level] || 'rb-amber';
   const banner = `<div class="rb ${rbCls}"><div class="rb-eye">${esc(rd.eyebrow||'')}</div><div class="rb-b">${esc(rd.badge)}</div><div class="rb-l">${esc(rd.line)}</div></div>`;
 
+  const SC = { green: '#36d399', blue: '#5fb0ff', amber: '#f4c152', red: '#ff6b6b', gray: '#9aa7b2', teal: '#13a8a8' };
+  const pcol = prov === 'credential' ? SC.green : (prov === 'ai-cred' || prov === 'ai-marker') ? SC.red : prov === 'camera' ? SC.blue : SC.gray;
+  const wcol = !reachOK ? SC.gray : reachFlag === 'ai' ? SC.red : reachFlag === 'news' ? SC.blue : examined ? SC.amber : ((r.reverse && r.reverse.count) ? SC.teal : SC.gray);
+  const fcol = debunked ? SC.red : SC.gray;
+  const acol = (r.aiRead && r.aiRead.text) ? SC.teal : SC.gray;
+  const ccol = ({ ai: SC.red, debunk: SC.red, verified: SC.green, photo: SC.blue, scrutinize: SC.amber })[rd.level] || SC.amber;
+  const cnode = (x, col, lab) => `<line x1="${x}" y1="44" x2="300" y2="140" stroke="#d5dce3" stroke-width="2"/><circle cx="${x}" cy="44" r="12" fill="${col}"/><text x="${x}" y="74" text-anchor="middle" fill="#586273" font-size="12" font-family="system-ui,sans-serif">${lab}</text>`;
+  const constellation = `<div class="card" style="margin-top:12px"><div class="sec">Consensus across independent signals</div><svg viewBox="0 0 600 184" style="width:100%;max-width:520px;display:block;margin:4px auto 0" role="img" aria-label="Independent signals converging into one consensus">${cnode(70, pcol, 'Provenance')}${cnode(230, wcol, 'Where it appears')}${cnode(370, fcol, 'Fact-check')}${cnode(530, acol, 'AI vision')}<circle cx="300" cy="140" r="20" fill="${ccol}"/><text x="300" y="176" text-anchor="middle" fill="#131722" font-size="13" font-weight="600" font-family="system-ui,sans-serif">Consensus</text></svg></div>`;
   const desc = (rd.badge || 'Evidence report') + ' — evidence, not a verdict.';
   const og = `
     <meta property="og:title" content="Relity — ${esc(rd.badge||'Evidence report')}" />
@@ -537,6 +545,7 @@ app.get('/check/:id', async (req, res) => {
   res.send(page('Relity — Evidence report', `
     ${r.hasImage ? `<img class="hero" src="${base}/img/${r.id}" alt="" />` : ''}
     ${banner}
+    ${constellation}
     <div class="note"><b>Evidence, not a verdict.</b> This reads the file, not the truth of the caption — weigh it yourself.</div>
     <div class="card">
       <div class="sec">What the web shows</div>
