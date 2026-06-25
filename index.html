@@ -224,15 +224,12 @@
       </div>
     </div>
 
-    <button id="moreToggle" type="button" style="background:none;border:none;color:var(--signal);font-family:var(--display);font-weight:600;font-size:13.5px;cursor:pointer;margin:16px auto 0;display:block;padding:6px">+ Add a caption or check a claim</button>
+    <button id="moreToggle" type="button" style="background:none;border:none;color:var(--signal);font-family:var(--display);font-weight:600;font-size:13.5px;cursor:pointer;margin:16px auto 0;display:block;padding:6px">+ Add the caption it was posted with (optional)</button>
     <div id="moreOpts" style="display:none">
     <div class="caprow">
       <input type="text" id="captionInput" placeholder="Optional — paste the caption it was posted with (catches false context)" aria-label="Optional caption the image was posted with" />
     </div>
-    <div class="caprow" style="display:flex;gap:7px;margin-top:9px">
-      <input type="text" id="claimInput" placeholder="Or check a claim / headline on its own — no image needed" aria-label="Check a claim or headline" style="flex:1" />
-      <button class="btn ghost" id="claimBtn" type="button">Check claim</button>
-    </div>
+    <input type="hidden" id="claimInput" />
     </div>
     <div id="claimOut" style="margin-top:14px"></div>
     <div id="videoOut" style="margin-top:14px"></div>
@@ -797,25 +794,24 @@ function claimBanner(rd){
 }
 function sourceList(s){
   if(!s||!s.items||!s.items.length) return '';
-  const rows=s.items.slice(0,6).map(m=>`<div class="row"><div class="row-main"><div class="row-name">${esc(m.title||m.source||'source')}</div><div class="row-read">${esc((m.source||'')+(m.date?' · '+m.date:''))}</div></div></div>`).join('');
-  return `<div class="card" style="margin-top:12px"><div class="sec">Where this claim shows up</div>${rows}</div>`;
+  const rows=s.items.slice(0,6).map(m=>{const t=esc(m.title||m.source||'source');const meta=esc((m.source||'')+(m.date?' · '+m.date:''));const name=m.link?`<a href="${esc(m.link)}" target="_blank" rel="noopener noreferrer" style="color:var(--signal);text-decoration:none">${t} ↗</a>`:t;return `<div class="row"><div class="row-main"><div class="row-name">${name}</div><div class="row-read">${meta}</div></div></div>`;}).join('');
+  return `<div class="card" style="margin-top:12px"><div class="sec">Sources — read them and decide</div>${rows}</div>`;
 }
 async function checkClaim(){
   const t=$('#claimInput').value.trim(); const out=$('#claimOut'); const base=apiBase();
-  if(!t){ $('#claimInput').focus(); return; }
+  if(!t){ const li=$('#linkInput'); if(li) li.focus(); return; }
   if(!base){ out.innerHTML='<p class="tip">Checking a claim needs the live server — open relity.ai.</p>'; return; }
-  const btn=$('#claimBtn'); const lab=btn.textContent; btn.textContent='Checking…'; btn.disabled=true;
+  const btn=$('#linkBtn'); const lab=btn?btn.textContent:''; if(btn){ btn.textContent='Checking…'; btn.disabled=true; }
   try{
     const r=await fetch(base+'/api/check-claim',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:t})});
     const j=await r.json();
     if(j&&j.read){ out.innerHTML=claimBanner(j.read)+sourceList(j.sources); }
     else out.innerHTML='<p class="tip">'+esc((j&&j.error)||'Could not check that claim.')+'</p>';
   }catch(_){ out.innerHTML='<p class="tip">Could not reach the server.</p>'; }
-  finally{ btn.textContent=lab; btn.disabled=false; try{refreshMe();}catch(_){} }
+  finally{ if(btn){ btn.textContent=lab; btn.disabled=false; } try{refreshMe();}catch(_){} }
 }
-$('#claimBtn').addEventListener('click',checkClaim);
-$('#claimInput').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();checkClaim();}});
-if($('#moreToggle')){ $('#moreToggle').addEventListener('click',function(){ var m=$('#moreOpts'); if(!m) return; var open=m.style.display!=='none'; m.style.display=open?'none':'block'; this.textContent=open?'+ Add a caption or check a claim':'− Hide extra options'; }); }
+/* visible claim box removed — the main box handles claims/questions; #claimInput kept as a hidden relay */
+if($('#moreToggle')){ $('#moreToggle').addEventListener('click',function(){ var m=$('#moreOpts'); if(!m) return; var open=m.style.display!=='none'; m.style.display=open?'none':'block'; this.textContent=open?'+ Add the caption it was posted with (optional)':'− Hide caption'; }); }
 
 /* ----- video: server-side keyframe extraction + footage report ----- */
 function renderVideo(j){
