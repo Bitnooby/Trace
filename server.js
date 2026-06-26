@@ -619,10 +619,12 @@ app.get('/check/:id', async (req, res) => {
     }
   }
 
+  let aiBlock;
   if (r.aiRead && r.aiRead.text) {
-    web += `<div class="row"><div><div class="n">AI vision read</div><div class="rd" style="white-space:pre-line">${esc(r.aiRead.text)}<br><span class="dim">AI vision · ${esc(r.aiRead.model || r.aiRead.provider || '')} — one model’s read, weighed with the evidence.</span></div></div><span class="st st-ai">${esc(r.aiRead.tierLabel || 'AI')}</span></div>`;
+    const t = esc(r.aiRead.text).replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>').replace(/^#{1,6}\s*(.+)$/gm, '<div class="aih">$1</div>').replace(/\n{2,}/g, '</p><p>').replace(/\n/g, '<br>');
+    aiBlock = `<div class="card"><div class="sec">AI vision read — the closest look at the media</div><div class="airead"><p>${t}</p><div class="aimeta">AI vision · ${esc(r.aiRead.model || r.aiRead.provider || '')} — one model’s read, weighed with the evidence.  <span class="st st-ai">${esc(r.aiRead.tierLabel || 'AI')}</span></div></div></div>`;
   } else {
-    web += `<div class="row"><div><div class="n">AI vision read</div><div class="rd">The vision model didn’t return a read for this frame this time — the other signals above still stand. <span class="dim">Re-run the check to try the AI read again.</span></div></div><span class="st st-present">No read this time</span></div>`;
+    aiBlock = `<div class="card"><div class="sec">AI vision read</div><div class="airead"><p>The vision model didn’t return a read for this frame this time — the other signals still stand. Re-run the check to try the AI read again.</p></div></div>`;
   }
 
   // CONSENSUS — weigh provenance + where-it-appears + fact-check into one honest read
@@ -656,19 +658,28 @@ app.get('/check/:id', async (req, res) => {
     <meta name="twitter:card" content="summary_large_image" />`;
 
   res.send(page('Relity — Evidence report', `
-    ${r.hasImage ? `<img class="hero" src="${base}/img/${r.id}" alt="" />` : ''}
-    ${banner}
-    ${constellation}
-    <div class="note"><b>Evidence, not a verdict.</b> This reads the file, not the truth of the caption — weigh it yourself.</div>
-    <div class="card">
-      <div class="sec">What the web shows</div>
-      ${web || '<div class="row"><div><div class="rd dim">Web checks run on the live server (reverse search + fact-check).</div></div></div>'}
-      <div class="sec">What the file shows</div>
-      ${rows}
+    <div class="rpt">
+      <aside class="rpt-side">
+        ${r.hasImage ? `<img class="thumb" src="${base}/img/${r.id}" alt="" />` : ''}
+        ${banner}
+        ${constellation}
+      </aside>
+      <main class="rpt-main">
+        ${aiBlock}
+        <div class="note"><b>Evidence, not a verdict.</b> This reads the file, not the truth of the caption — weigh it yourself.</div>
+        <div class="card">
+          <div class="sec">What the web shows</div>
+          ${web || '<div class="row"><div><div class="rd dim">Web checks run on the live server (reverse search + fact-check).</div></div></div>'}
+          <div class="sec">What the file shows</div>
+          ${rows}
+        </div>
+      </main>
     </div>
-    <a class="cta" href="${base}/">Check your own image →</a>
-    <button id="cardBtn" class="cta" style="margin-top:10px;cursor:pointer">📸 Save a share card</button>
-    <canvas id="rcard" width="1200" height="630" style="display:none"></canvas>
+    <div class="rpt-foot">
+      <a class="cta" href="${base}/">Check your own image →</a>
+      <button id="cardBtn" class="cta cta-ghost" style="margin-top:10px;cursor:pointer">📸 Save a share card</button>
+      <canvas id="rcard" width="1200" height="630" style="display:none"></canvas>
+    </div>
     <script>
     (function(){
       var RC=${JSON.stringify({ badge: rd.badge||'', line: rd.line||'', level: rd.level||'scrutinize', img: r.hasImage ? base + '/img/' + r.id : '', url: base + '/check/' + r.id }).replace(/</g, '\\u003c')};
@@ -691,10 +702,10 @@ app.get('/check/:id', async (req, res) => {
       };
     })();
     </script>
-  `, base, og));
+  `, base, og, true));
 });
 
-function page(title, body, base, og) {
+function page(title, body, base, og, wide) {
   return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/><title>${title}</title><link rel="icon" type="image/svg+xml" href="/favicon.svg"/>${og||''}
   <style>
@@ -733,7 +744,21 @@ function page(title, body, base, og) {
       .row{padding:13px 13px;gap:11px}.n{font-size:14px}.rd{font-size:12.5px}
       .st{font-size:10px;padding:4px 8px}
     }
-  </style></head><body><div class="w">
+    .w.wide{max-width:1060px}
+    .rpt{display:grid;grid-template-columns:1fr;gap:18px;margin-top:16px}
+    .thumb{display:block;width:100%;max-height:300px;object-fit:contain;background:#0d1117;border-radius:13px;border:1px solid var(--line);margin-bottom:14px}
+    .airead{padding:16px 18px;font-size:14px;line-height:1.62}
+    .airead p{margin:0 0 10px;color:var(--g)}
+    .airead .aih{font-weight:700;color:var(--ink);font-size:13px;margin:15px 0 5px}
+    .airead .aimeta{margin-top:12px;font-size:11.5px;color:#8A95A4;border-top:1px solid var(--line);padding-top:10px}
+    .cta-ghost{background:#fff;color:var(--ink);border:1px solid var(--line)}
+    .rpt-foot{max-width:620px;margin:6px auto 0}
+    @media(min-width:920px){
+      .rpt{grid-template-columns:minmax(0,1.65fr) minmax(330px,1fr);gap:22px;align-items:start}
+      .rpt-main{order:1}
+      .rpt-side{order:2;position:sticky;top:20px}
+    }
+  </style></head><body><div class="w${wide ? ' wide' : ''}">
     <div class="brand"><span class="g"><svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg"><g stroke="#fff" stroke-width="8" stroke-linecap="round"><line x1="32" y1="34" x2="50" y2="52"/><line x1="50" y1="52" x2="70" y2="36"/><line x1="50" y1="52" x2="52" y2="78"/></g><circle cx="32" cy="34" r="8" fill="#fff"/><circle cx="70" cy="36" r="8" fill="#fff"/><circle cx="52" cy="78" r="8" fill="#fff"/><circle cx="50" cy="52" r="9.5" fill="#fff"/></svg></span> Relity</div>${body}
   </div></body></html>`;
 }
