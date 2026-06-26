@@ -465,7 +465,7 @@ function renderRead(rd){
    It reports the WEIGHT of evidence and leaves the final judgement to the person.
    prov:  'ai-cred' | 'ai-marker' | 'credential' | 'camera' | 'stripped'
    reach: 'ai' | 'news' | 'stock' | null      debunked: bool      count: # of places */
-function computeConsensus(prov, reach, debunked, count, examined, vintage, mismatchYear){
+function computeConsensus(prov, reach, debunked, count, examined, vintage, mismatchYear, aiConcern){
   const E='Consensus — the evidence, weighed';
   const places = count ? ` (seen across ${spreadPhrase(count)})` : '';
   const vint = vintage ? ` It’s been online since ${vintage} — be wary of any caption claiming it’s recent or breaking.` : '';
@@ -474,6 +474,10 @@ function computeConsensus(prov, reach, debunked, count, examined, vintage, misma
   if(prov==='ai-cred') return r('ai','AI-generated','Its Content Credential declares it AI-generated — a strong, embedded signal'+(reach==='ai'?', and it lives on AI-image sites too. Everything lines up.':'.'),'Treat as AI-generated.');
   if(mismatchYear) return {eyebrow:E,level:'scrutinize',badge:'Likely recontextualized',line:`The caption presents this as current, but the image has been online since ${mismatchYear} — the classic recontextualization move: a real, older photo paired with a false new caption.`,action:'Find where this image first appeared and what it actually showed. Your call.'};
   if(examined) return r('scrutinize','Likely fact-checked',`This image appears on fact-checking sites${places} — very likely it’s already been examined. Read what they concluded before trusting any caption attached to it.`,'Open the fact-checkers’ page and see their verdict before sharing.');
+  if(aiConcern==='ai'){
+    if(reach==='news'||prov==='camera') return r('scrutinize','Signals conflict',`A vision model read this as likely AI-generated, yet it also carries real-photo signals${reach==='news'?' (it appears on news outlets)':' (camera data)'} — these disagree, so it is genuinely uncertain; weigh both.`,'Don’t assume either way — find the original source.');
+    return r('scrutinize','Leans AI-generated',`A vision model read this as likely AI-generated${places} — one signal, not proof, and a single frame can’t be certain, but the weight here leans synthetic.`,'Treat with skepticism; look for the original source before trusting it.');
+  }
   if(prov==='camera' && reach==='ai') return r('scrutinize','Signals conflict','It carries camera data (suggests a real photo) yet lives on AI-image sites (suggests AI). These disagree — genuinely uncertain.','Don’t assume either way; find the original source.');
   if(prov==='ai-marker' && reach==='ai') return r('scrutinize','Leans AI-generated',`It carries an AI-tool marker and lives on AI-image sites${places}. No hard proof, but the weight points to AI.`,'Lean AI — but verify before you rely on it. Your call.');
   if(reach==='ai') return r('scrutinize','Leans AI-generated',`No provenance survived, but this image lives on AI-image sites${places} — circumstantial, but it leans AI-generated.`,'Lean AI — but it’s circumstantial. Your call.');
@@ -700,8 +704,9 @@ async function publishToServer(file,hash,localFindings,readObj,sig,claim){
   if(air&&air.text){ setRow('r-ai',{ic:'ai',state:['ai', air.tierLabel||'AI'],readHTML:fmtAIRead(air.text),data:'AI vision · '+(air.model||air.provider)+' — one model’s read; weigh it with the evidence above.'}); }
   else { setRow('r-ai',{ic:'srv',state:['srv','—'],read:'AI vision isn’t switched on yet (add a vision API key).',data:'Free: Gemini · Pro: Claude.'}); }
   // ── CONSENSUS: now that every stream is in, weigh them into the top read ──
-  if((rev.connected && !rev.limited) || debunked){
-    renderRead(computeConsensus(prov, reachFlag, debunked, count, examined, vintage, mismatchYear));
+  var aiConcern = (air && /READ:\s*Likely AI-generated/i.test(air.text || '')) ? 'ai' : null;
+  if((rev.connected && !rev.limited) || debunked || aiConcern){
+    renderRead(computeConsensus(prov, reachFlag, debunked, count, examined, vintage, mismatchYear, aiConcern));
   }
   try{ refreshMe(); }catch(_){}
 }

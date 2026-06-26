@@ -552,7 +552,7 @@ function vintageYear(earliest){
 function spreadPhrase(n){ if(!n) return ''; if(n<=3) return 'a few places'; if(n<=15) return 'several places'; return 'many places'; }
 
 // CONSENSUS — weigh all three evidence streams into one honest read (mirrors the client)
-function computeConsensus(prov, reach, debunked, count, examined, vintage, mismatchYear){
+function computeConsensus(prov, reach, debunked, count, examined, vintage, mismatchYear, aiConcern){
   const E='Consensus — the evidence, weighed';
   const places = count ? ` (seen across ${spreadPhrase(count)})` : '';
   const vint = vintage ? ` It’s been online since ${vintage} — be wary of any caption claiming it’s recent or breaking.` : '';
@@ -561,6 +561,10 @@ function computeConsensus(prov, reach, debunked, count, examined, vintage, misma
   if(prov==='ai-cred') return r('ai','AI-generated','Its Content Credential declares it AI-generated — a strong, embedded signal'+(reach==='ai'?', and it lives on AI-image sites too. Everything lines up.':'.'));
   if(mismatchYear) return {eyebrow:E,level:'scrutinize',badge:'Likely recontextualized',line:`The caption presents this as current, but the image has been online since ${mismatchYear} — the classic recontextualization move: a real, older photo paired with a false new caption.`};
   if(examined) return r('scrutinize','Likely fact-checked',`This image appears on fact-checking sites${places} — very likely it’s already been examined. Read what they concluded before trusting any caption attached to it.`);
+  if(aiConcern==='ai'){
+    if(reach==='news'||prov==='camera') return r('scrutinize','Signals conflict',`A vision model read this as likely AI-generated, yet it also carries real-photo signals${reach==='news'?' (it appears on news outlets)':' (camera data)'} — these disagree, so it is genuinely uncertain; weigh both.`);
+    return r('scrutinize','Leans AI-generated',`A vision model read this as likely AI-generated${places} — one signal, not proof, and a single frame can’t be certain, but the weight here leans synthetic.`);
+  }
   if(prov==='camera' && reach==='ai') return r('scrutinize','Signals conflict','It carries camera data (suggests a real photo) yet lives on AI-image sites (suggests AI). These disagree — genuinely uncertain.');
   if(prov==='ai-marker' && reach==='ai') return r('scrutinize','Leans AI-generated',`It carries an AI-tool marker and lives on AI-image sites${places}. No hard proof, but the weight points to AI.`);
   if(reach==='ai') return r('scrutinize','Leans AI-generated',`No provenance survived, but this image lives on AI-image sites${places} — circumstantial, but it leans AI-generated.`);
@@ -637,7 +641,8 @@ app.get('/check/:id', async (req, res) => {
   const vintage = reachOK ? vintageYear(r.reverse.earliest) : null;
   const debunked = !!(r.fact?.connected && (r.fact.claims || []).length);
   const mismatchYear = (r.claim && r.claim.mismatch && r.claim.mismatch.is) ? r.claim.mismatch.year : null;
-  const rd = computeConsensus(prov, reachFlag, debunked, reachOK ? (r.reverse.count || 0) : 0, examined, vintage, mismatchYear);
+  const aiConcern = (r.aiRead && /READ:\s*Likely AI-generated/i.test(r.aiRead.text || '')) ? 'ai' : null;
+  const rd = computeConsensus(prov, reachFlag, debunked, reachOK ? (r.reverse.count || 0) : 0, examined, vintage, mismatchYear, aiConcern);
   const rbCls = { ai: 'rb-red', debunk: 'rb-red', verified: 'rb-green', photo: 'rb-blue', scrutinize: 'rb-amber' }[rd.level] || 'rb-amber';
   const banner = `<div class="rb ${rbCls}"><div class="rb-eye">${esc(rd.eyebrow||'')}</div><div class="rb-b">${esc(rd.badge)}</div><div class="rb-l">${esc(rd.line)}</div></div>`;
 
