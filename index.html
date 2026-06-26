@@ -90,10 +90,13 @@
 
   #dossier{margin-top:24px;display:none}
   #dossier.show{display:block;animation:rise .4s ease both}
-  .doss-grid{display:flex;flex-direction:column}
+  #dossier{background:none;border:0;box-shadow:none;border-radius:0;overflow:visible}
+  .doss-main,.doss-side{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);overflow:hidden}
+  #dossier .footer-actions{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);margin-top:18px}
+  .doss-grid{display:flex;flex-direction:column;gap:18px}
   @media(min-width:860px){
-    #dossier .doss-grid{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(300px,1fr);align-items:start}
-    #dossier .doss-main{order:1;min-width:0;border-right:1px solid var(--line)}
+    #dossier .doss-grid{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(300px,1fr);gap:18px;align-items:start}
+    #dossier .doss-main{order:1;min-width:0}
     #dossier .doss-side{order:2}
   }
   @keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
