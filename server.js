@@ -55,7 +55,8 @@ async function redisCmd(args) {
   const r = await fetch(REDIS_URL, {
     method: 'POST',
     headers: { Authorization: `Bearer ${REDIS_TOKEN}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify(args)
+    body: JSON.stringify(args),
+    signal: AbortSignal.timeout(6000)
   });
   if (!r.ok) throw new Error('redis ' + r.status);
   return (await r.json()).result;
@@ -268,7 +269,7 @@ app.post('/api/publish', upload.single('image'), async (req, res) => {
     try {
       if (req.file && claimOut && reverse && reverse.connected && !reverse.limited && !reverse.degraded && (reverse.count||0) >= 5) {
         const trd = consensusOf(report);
-        await trendPush({ id, at: Date.now(), cap: clip((claimOut.title||claimOut.description||''),140), src: claimOut.source||'', n: reverse.count||0, badge: trd?trd.badge:'', level: trd?trd.level:'scrutinize' });
+        trendPush({ id, at: Date.now(), cap: clip((claimOut.title||claimOut.description||''),140), src: claimOut.source||'', n: reverse.count||0, badge: trd?trd.badge:'', level: trd?trd.level:'scrutinize' }).catch(()=>{});
       }
     } catch (e) { /* trending is best-effort, never block a check */ }
     res.json({ id, reverse, fact, claim: claimOut, aiRead, quota: { used: await quotaGet(rid), limit, tier: acct.tier } });
