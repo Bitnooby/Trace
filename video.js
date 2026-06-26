@@ -127,35 +127,15 @@ module.exports = function video({ SERPAPI_KEY = '', putImage, ai } = {}) {
       const titles = [...new Set(per.flatMap(f => (f.rev.matches || []).map(m => m && m.title)).filter(Boolean))].slice(0, 8);
       if (ai && ai.identifyEvent && titles.length >= 2) { const ev = await ai.identifyEvent({ tier: 'free', titles }); if (ev && ev.event) event = ev.event; }
     } catch (e) { console.error('video identifyEvent:', e.message); }
-    return { read: weigh(interp, totalCount, vintageYear(earliest)), where: { domains: allDomains.slice(0, 8), count: totalCount, earliest, event }, aiRead };
+    return { read: weigh(interp, totalCount, vintageYear(earliest)), frames: per.map(f => ({ img: '/img/' + f.id, count: f.rev.count || 0 })), where: { domains: allDomains.slice(0, 8), count: totalCount, earliest, event }, aiRead };
   }
 
   function mount(app, uploadVideo) {
     app.post('/api/check-video', uploadVideo.single('video'), async (req, res) => {
       try {
         if (!req.file) return res.status(400).json({ error: 'No video uploaded.' });
-        if (!ffOK) return res.json({ connected: false, read: { eyebrow: 'Consensus — the evidence, weighed', level: 'scrutinize', badge: 'Video unavailable', line: 'Video analysis is temporarily unavailable on the server.' }, frames: [] });
-        if (!SERPAPI_KEY) return res.json({ connected: false, read: { eyebrow: 'Consensus — the evidence, weighed', level: 'scrutinize', badge: 'Not configured', line: 'Video web-check needs the reverse-search key (SERPAPI_KEY).' }, frames: [] });
-        const { frames, duration } = await extractKeyframes(req.file.buffer, 3);
-        if (!frames.length) return res.status(422).json({ error: 'Could not read frames from that video.' });
-        const base = `${req.protocol}://${req.get('host')}`;
-        const per = [];
-        for (const fb of frames) {
-          const id = 'v' + crypto.randomBytes(6).toString('hex');
-          await putImage(id, fb, 'image/jpeg');
-          per.push({ id, rev: await reverseSearch(`${base}/img/${id}`) });
-        }
-        const allDomains = [...new Set(per.flatMap(f => f.rev.domains || []))];
-        const totalCount = per.reduce((s, f) => s + (f.rev.count || 0), 0);
-        const earliest = per.map(f => f.rev.earliest).filter(Boolean).sort((a, b) => new Date(a.date) - new Date(b.date))[0] || null;
-        const interp = interpretDomains(allDomains);
-        const vintage = vintageYear(earliest);
-        res.json({
-          connected: true, duration,
-          frames: per.map(f => ({ img: `/img/${f.id}`, count: f.rev.count || 0 })),
-          where: { domains: allDomains.slice(0, 8), count: totalCount, earliest, flag: interp.flag, examined: interp.examined },
-          read: weigh(interp, totalCount, vintage)
-        });
+        const out = await checkVideo(req.file.buffer);
+        res.json({ connected: true, read: out.read, frames: out.frames || [], where: out.where || null, aiRead: out.aiRead || null });
       } catch (e) { res.status(500).json({ error: e.message }); }
     });
   }
