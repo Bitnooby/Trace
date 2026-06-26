@@ -479,24 +479,8 @@ app.get('/api/check-link', async (req, res) => {
 
   if (mediaUrl) { try { mediaUrl = new URL(mediaUrl, u.href).href; } catch { mediaUrl = null; } }
 
-  // 3) check the poster's caption with the same claim engine as the bot
-  let captionCheck = null;
-  const capText = caption && (caption.title || caption.description) ? (caption.title || caption.description) : '';
-  if (capText) {
-    let tier = 'free';
-    try { tier = (await billing.tierOf(req)).tier || 'free'; } catch {}
-    const rid = deviceId(req, res);
-    const limit = tier === 'pro' ? billing.PRO_DAILY : FREE_DAILY;
-    if ((await quotaGet(rid)) >= limit) {
-      captionCheck = { limited: true, read: { eyebrow: 'Consensus — the evidence, weighed', level: 'scrutinize', badge: 'Free limit reached', line: 'You have used today’s free checks — sign in / upgrade to keep checking the poster’s claim.' }, sources: { count: 0, items: [] } };
-    } else {
-      try {
-        const cls = ai && ai.analyzeClaim ? await ai.analyzeClaim({ tier, text: capText }).catch(() => null) : null;
-        captionCheck = await claims.analyze(capText, cls, tier);
-        quotaInc(rid).catch(() => {});
-      } catch (e) { captionCheck = null; }
-    }
-  }
+  // 3) the caption is checked separately by the client (keeps the link read fast) — see /api/check-claim
+  const captionCheck = null;
 
   const blocked = !caption && !mediaUrl;
   let note = '';
@@ -506,6 +490,22 @@ app.get('/api/check-link', async (req, res) => {
     : 'Could not read a caption or preview from that link. Drop the file here, or paste the caption to check it.';
 
   res.json({ ok: !blocked, platform: plat.name, locked: !!plat.locked, isVideo, mediaUrl: mediaUrl || null, caption: caption || null, captionCheck, blocked, note });
+});
+
+
+app.post('/api/attach-verdict', async (req, res) => {
+  try {
+    const id = ((req.body && req.body.id) || '').toString().slice(0, 40);
+    const v = req.body && req.body.verdict;
+    if (!id || !v || !v.line) return res.json({ ok: false });
+    const r = await getReport(id);
+    if (!r) return res.json({ ok: false });
+    const verdict = { badge: String(v.badge || '').slice(0, 60), line: String(v.line || '').slice(0, 400), level: v.level || '' };
+    if (r.claim && (r.claim.title || r.claim.description)) r.claim.verdict = verdict;
+    else r.claim = { title: '', description: '', source: '', verdict };
+    await putReport(id, r);
+    res.json({ ok: true });
+  } catch (e) { res.json({ ok: false }); }
 });
 
 

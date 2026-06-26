@@ -595,6 +595,7 @@ async function publishToServer(file,hash,localFindings,readObj,sig,claim){
   try{ const r=await fetch(base+'/api/publish',{method:'POST',body:fd}); j=await r.json(); }
   catch(e){ return; } // e.g. preview sandbox with no server → leave honest placeholders
   if(!j||!j.id) return;
+  lastPublishId=j.id;
 
   const link=base+'/check/'+j.id;
   $('#shareUrl').textContent=link;
@@ -730,15 +731,39 @@ async function pasteFromClipboard(){
   alert('Copy an image or a link first, then tap Paste (or press Ctrl+V).');
 }
 $('#pasteBtn').addEventListener('click',pasteFromClipboard);
-var pendingLinkRead=null;
+var pendingLinkRead=null, lastPublishId=null;
 function renderLinkRead(p){
   if(!p) return '';
   var where = p.platform ? '<div class="tip" style="margin:0 0 8px;opacity:.85">Posted on <b>'+esc(p.platform)+'</b></div>' : '';
+  var capTxt = (p.caption && (p.caption.title||p.caption.description)) ? '“'+esc(p.caption.title||p.caption.description)+'”'+(p.caption.source?' — '+esc(p.caption.source):'') : '';
   var body='';
   if(p.cc && p.cc.read){ body = '<div class="sec" style="margin-bottom:6px">The poster’s claim — checked</div>' + claimBanner(p.cc.read) + sourceList(p.cc.sources); }
+  else if(p.checking){ body = '<div class="sec" style="margin-bottom:6px">The poster’s claim</div>' + (capTxt?'<div class="card" style="margin-bottom:8px"><div class="row"><div class="row-main"><div class="row-read">'+capTxt+'</div></div></div></div>':'') + '<p class="tip">Checking the claim against the evidence…</p>'; }
   else if(p.blocked){ body = '<div class="read-banner r-amber" style="border-radius:13px"><div class="rb-eyebrow">Couldn’t read this link</div><div class="rb-badge"><span class="dotb"></span>Use the file or the extension</div><div class="rb-line">'+esc(p.note||'')+'</div></div>'; }
   var note = (p.note && !p.blocked) ? '<p class="tip" style="margin-top:8px">'+esc(p.note)+'</p>' : '';
   return where + body + note;
+}
+function attachVerdict(rd){
+  try{
+    if(!lastPublishId || !rd || !rd.line) return;
+    var base=apiBase(); if(!base) return;
+    fetch(base+'/api/attach-verdict',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:lastPublishId, verdict:{badge:rd.badge, line:rd.line, level:rd.level}})}).catch(function(){});
+  }catch(_){}
+}
+async function fetchCaptionVerdict(caption, target, platform, note){
+  var base=apiBase(); var capText=(caption && (caption.title||caption.description)) ? (caption.title||caption.description) : '';
+  if(!base || !capText) return;
+  try{
+    var r=await fetch(base+'/api/check-claim',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:capText})});
+    var j=await r.json();
+    if(j && j.read){
+      var html=renderLinkRead({cc:j, caption:caption, platform:platform||'', note:note||''});
+      var el=(target==='claim') ? $('#claimOut') : $('#captionVerdict');
+      if(el) el.innerHTML=html;
+      attachVerdict(j.read);
+    }
+  }catch(_){}
+  try{ refreshMe(); }catch(_){}
 }
 async function checkLink(){
   var url=$('#linkInput').value.trim(); if(!url){$('#linkInput').focus();return;}
@@ -746,27 +771,32 @@ async function checkLink(){
   if(!base){ alert('Reading a link needs the live server. Open relity.ai.'); return; }
   var btn=$('#linkBtn'); var label=btn?btn.textContent:''; if(btn){btn.textContent='Reading…'; btn.disabled=true;}
   var out=$('#claimOut'); if(out) out.innerHTML='<p class="tip">Reading the link…</p>';
-  pendingLinkRead=null;
+  pendingLinkRead=null; lastPublishId=null;
+  var ctrl=new AbortController(); var to=setTimeout(function(){ try{ctrl.abort();}catch(_){} }, 20000);
   try{
-    var r=await fetch(base+'/api/check-link?url='+encodeURIComponent(url));
+    var r=await fetch(base+'/api/check-link?url='+encodeURIComponent(url), {signal:ctrl.signal});
     var j=await r.json();
     if(!r.ok && j && j.error){ if(out) out.innerHTML='<p class="tip">'+esc(j.error)+'</p>'; return; }
     if(j && j.mediaUrl){
-      pendingLinkRead={cc:j.captionCheck, platform:j.platform, note:j.note, blocked:false};
+      pendingLinkRead={caption:j.caption, platform:j.platform, note:j.note, checking:true};
       if(out) out.innerHTML='';
       var ok=false;
       try{
         var ir=await fetch(base+'/api/proxy-image?url='+encodeURIComponent(j.mediaUrl));
-        if(ir.ok){ var blob=await ir.blob(); if(blob.type && blob.type.indexOf('image/')===0){ ok=true; var _cap=j.caption||null; if(_cap && j.captionCheck && j.captionCheck.read){ _cap.verdict={badge:j.captionCheck.read.badge,line:j.captionCheck.read.line,level:j.captionCheck.read.level}; } handleFile(new File([blob],'from-link',{type:blob.type}), _cap); } }
+        if(ir.ok){ var blob=await ir.blob(); if(blob.type && blob.type.indexOf('image/')===0){ ok=true; handleFile(new File([blob],'from-link',{type:blob.type}), j.caption||null); } }
       }catch(_){}
-      if(!ok){ pendingLinkRead=null; if(out) out.innerHTML=renderLinkRead({cc:j.captionCheck, platform:j.platform, note:j.note, blocked:!j.captionCheck}); }
+      if(!ok){ pendingLinkRead=null; if(out) out.innerHTML=renderLinkRead({caption:j.caption, platform:j.platform, note:j.note, checking:!!(j.caption&&(j.caption.title||j.caption.description)), blocked:!j.caption}); }
+      if(j.caption && (j.caption.title||j.caption.description)){ fetchCaptionVerdict(j.caption, ok?'caption':'claim', j.platform, j.note); }
+    } else if(j && (j.caption || j.blocked)){
+      if(out) out.innerHTML=renderLinkRead({caption:j.caption, platform:j.platform, note:j.note, checking:!!(j.caption&&(j.caption.title||j.caption.description)), blocked:!!j.blocked});
+      if(j.caption && (j.caption.title||j.caption.description)){ fetchCaptionVerdict(j.caption, 'claim', j.platform, j.note); }
     } else {
-      if(out) out.innerHTML=renderLinkRead({cc:(j&&j.captionCheck), platform:(j&&j.platform), note:(j&&j.note), blocked:!!(j&&j.blocked)});
+      if(out) out.innerHTML='<p class="tip">Couldn’t read that link.</p>';
     }
     try{ refreshMe(); }catch(_){}
-  }catch(_){
-    if(out) out.innerHTML='<p class="tip">Could not reach the server to read that link.</p>';
-  }finally{ if(btn){btn.textContent=label; btn.disabled=false;} }
+  }catch(e){
+    if(out) out.innerHTML='<p class="tip">'+((e&&e.name==='AbortError')?'That link took too long to read — try dropping the file here instead.':'Could not reach the server to read that link.')+'</p>';
+  }finally{ clearTimeout(to); if(btn){btn.textContent=label; btn.disabled=false;} }
 }
 function heroCheck(){
   const v=$('#linkInput').value.trim();
