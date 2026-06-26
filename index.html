@@ -644,7 +644,7 @@ async function publishToServer(file,hash,localFindings,readObj,sig,claim){
   let debunked=false;
   if(fc.connected && (fc.claims||[]).length){
     debunked=true;
-    const txt=fc.claims.map(c=>`${c.publisher||''}: ${c.rating||''}`).join(' · ');
+    const _t={}; (fc.claims||[]).forEach(c=>{var k=(c.publisher||'')+': '+(c.rating||''); _t[k]=(_t[k]||0)+1;}); const txt=Object.keys(_t).map(k=> k+(_t[k]>1?' ('+_t[k]+' fact-checks)':'')).join(' · ');
     setRow('r-fact',{ic:'caution',state:['caution','Matches'],read:'Fact-checkers have addressed claims tied to this image.',data:txt});
   } else if(fc.connected){
     setRow('r-fact',{ic:'present',state:['present','No debunk'],read:'No published fact-check matched this image. That means no debunk is on record — not that it’s verified true.',data:'No fact-check matches found.'});

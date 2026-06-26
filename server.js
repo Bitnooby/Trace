@@ -612,7 +612,7 @@ app.get('/check/:id', async (req, res) => {
   if (r.fact?.connected) {
     const claims = r.fact.claims || [];
     if (claims.length) {
-      const c = claims.map(x => `${esc(x.publisher||'')}: ${esc(x.rating||'')}`).join(' · ');
+      const _t={}; claims.forEach(x=>{var k=(x.publisher||'')+': '+(x.rating||''); _t[k]=(_t[k]||0)+1;}); const c = Object.keys(_t).map(k=> esc(k)+(_t[k]>1?' ('+_t[k]+' fact-checks)':'')).join(' · ');
       web += `<div class="row"><div><div class="n">Fact-check record</div><div class="rd">Fact-checkers have addressed claims tied to this image. ${c}</div></div><span class="st st-caution">Matches</span></div>`;
     } else {
       web += `<div class="row"><div><div class="n">Fact-check record</div><div class="rd">No published fact-check matched this image — no debunk is on record, which is not the same as "verified true."</div></div><span class="st st-present">No debunk</span></div>`;
