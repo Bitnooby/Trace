@@ -29,12 +29,12 @@
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;450;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
 <style>
   :root{
-    --paper:#F4F6F9; --card:#FFFFFF; --ink:#131722; --graphite:#586273;
-    --faint:#8A95A4; --line:#E6EAF0; --line-strong:#D3DAE3;
+    --paper:#F1F4F9; --card:#FFFFFF; --ink:#131722; --graphite:#556074;
+    --faint:#828DA0; --line:#E4E9F1; --line-strong:#CFD8E4;
     --signal:#0B6E6E; --signal-bright:#13A8A8; --signal-wash:#E6F4F4; --signal-line:#C5E5E5;
     --ok:#2E7D5A; --ok-wash:#E8F1EC; --warn:#8A6A2E; --warn-wash:#F3ECDE;
     --flag:#A14A38; --flag-wash:#F3EAE6; --ai:#5B4BC4; --ai-wash:#EDEBFA; --srv:#41507E; --srv-wash:#EDF0FA;
-    --shadow:0 1px 2px rgba(19,23,34,.04),0 10px 30px rgba(19,23,34,.07);
+    --shadow:0 1px 2px rgba(20,27,45,.05),0 14px 36px -10px rgba(20,27,45,.12);
     --shadow-sm:0 1px 2px rgba(19,23,34,.05);
     --mono:'IBM Plex Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
     --display:'Space Grotesk',system-ui,sans-serif; --body:'Inter',system-ui,sans-serif;
@@ -57,7 +57,7 @@
   .say{margin:16px auto 0;color:var(--graphite);font-size:17px;max-width:33ch;line-height:1.45}
 
   .panel{background:var(--card);border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow);margin-top:26px;overflow:hidden}
-  .dropzone{margin-top:30px;border:2px dashed var(--line-strong);border-radius:20px;padding:44px 24px;text-align:center;cursor:pointer;background:var(--card);transition:border-color .15s,background .15s,transform .15s}
+  .dropzone{margin-top:30px;border:2px dashed var(--line-strong);border-radius:16px;padding:44px 24px;text-align:center;cursor:pointer;background:var(--card);transition:border-color .15s,background .15s,transform .15s}
   .dropzone:hover{border-color:var(--signal-bright);background:var(--signal-wash)}
   .dropzone.drag{border-color:var(--signal);background:var(--signal-wash);transform:scale(1.01)}
   .dropzone:focus-visible{outline:2px solid var(--signal-bright);outline-offset:3px}
