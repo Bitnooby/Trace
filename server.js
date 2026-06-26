@@ -558,6 +558,16 @@ function vintageYear(earliest){
 function spreadPhrase(n){ if(!n) return ''; if(n<=3) return 'a few places'; if(n<=15) return 'several places'; return 'many places'; }
 
 // CONSENSUS — weigh all three evidence streams into one honest read (mirrors the client)
+function aiLeanOf(t){
+  t=(t||'').toString();
+  if(/READ:\s*Likely AI-generated/i.test(t)) return 'ai';
+  if(/READ:\s*Possibly edited/i.test(t)) return 'edited';
+  if(/READ:\s*Likely authentic/i.test(t)) return 'real';
+  if(/READ:\s*Inconclusive/i.test(t)) return null;
+  if(/lean[s]?[^.]{0,40}AI[- ]?generat/i.test(t)) return 'ai';
+  if(/(consistent with|rather than)[^.]{0,30}(real|genuine|authentic|photograph)/i.test(t)) return 'real';
+  return null;
+}
 function computeConsensus(prov, reach, debunked, count, examined, vintage, mismatchYear, aiConcern){
   const E='Consensus — the evidence, weighed';
   const places = count ? ` (seen across ${spreadPhrase(count)})` : '';
@@ -578,6 +588,11 @@ function computeConsensus(prov, reach, debunked, count, examined, vintage, misma
   if(prov==='camera') return r('photo','Leans authentic','It carries camera/capture data'+(reach==='news'?' and appears on news outlets':'')+' — consistent with a real photo, though metadata can be edited.');
   if(reach==='news') return r('photo','Leans authentic',`The file is stripped, but this image appears on news outlets${places} — consistent with a real news photo.`);
   if(prov==='credential') return r('verified','Origin on record','It carries a Content Credential — a real record of how it was made. Most images carry none.');
+  if(aiConcern==='real'){
+    if(reach==='news'||prov==='camera') return r('photo','Leans authentic',`The closest look found no signs of manipulation, and it ${reach==='news'?'appears on news outlets':'carries camera data'}${places} — our read leans real. Captions and context can still mislead, so verify what it actually shows.`);
+    return r('photo','Leans real',`The closest look found no manipulation tells${places}, so our read leans real — but a clean frame alone can’t rule out AI video and no provenance or news trail survived, so treat the specifics as unconfirmed.`);
+  }
+  if(aiConcern==='edited') return r('scrutinize','Possibly edited',`The closest look flagged possible signs of editing${places}, so it leans edited — one signal, not proof; find the original to compare.`);
   return r('scrutinize','Unverified','No provenance survived, and no fact-check is on record'+(reach==='stock'?'; it appears on stock-image sites':'')+`${places}. It could be real, AI, or real media with a false caption.`);
 }
 
@@ -601,7 +616,7 @@ function consensusOf(r){
   const vintage = reachOK ? vintageYear(r.reverse.earliest) : null;
   const debunked = !!(r.fact && r.fact.connected && (r.fact.claims || []).length);
   const mismatchYear = (r.claim && r.claim.mismatch && r.claim.mismatch.is) ? r.claim.mismatch.year : null;
-  const aiConcern = (r.aiRead && /READ:\s*Likely AI-generated/i.test(r.aiRead.text || '')) ? 'ai' : null;
+  const aiConcern = aiLeanOf(r.aiRead && r.aiRead.text);
   return computeConsensus(prov, reachFlag, debunked, reachOK ? (r.reverse.count || 0) : 0, examined, vintage, mismatchYear, aiConcern);
 }
 app.get('/trending', async (req, res) => {
@@ -685,7 +700,7 @@ app.get('/check/:id', async (req, res) => {
   const vintage = reachOK ? vintageYear(r.reverse.earliest) : null;
   const debunked = !!(r.fact?.connected && (r.fact.claims || []).length);
   const mismatchYear = (r.claim && r.claim.mismatch && r.claim.mismatch.is) ? r.claim.mismatch.year : null;
-  const aiConcern = (r.aiRead && /READ:\s*Likely AI-generated/i.test(r.aiRead.text || '')) ? 'ai' : null;
+  const aiConcern = aiLeanOf(r.aiRead && r.aiRead.text);
   const rd = computeConsensus(prov, reachFlag, debunked, reachOK ? (r.reverse.count || 0) : 0, examined, vintage, mismatchYear, aiConcern);
   const rbCls = { ai: 'rb-red', debunk: 'rb-red', verified: 'rb-green', photo: 'rb-blue', scrutinize: 'rb-amber' }[rd.level] || 'rb-amber';
   const banner = `<div class="rb ${rbCls}"><div class="rb-eye">${esc(rd.eyebrow||'')}</div><div class="rb-b">${esc(rd.badge)}</div><div class="rb-l">${esc(rd.line)}</div></div>`;

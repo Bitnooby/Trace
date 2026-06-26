@@ -466,6 +466,16 @@ function renderRead(rd){
    It reports the WEIGHT of evidence and leaves the final judgement to the person.
    prov:  'ai-cred' | 'ai-marker' | 'credential' | 'camera' | 'stripped'
    reach: 'ai' | 'news' | 'stock' | null      debunked: bool      count: # of places */
+function aiLeanOf(t){
+  t=(t||'').toString();
+  if(/READ:\s*Likely AI-generated/i.test(t)) return 'ai';
+  if(/READ:\s*Possibly edited/i.test(t)) return 'edited';
+  if(/READ:\s*Likely authentic/i.test(t)) return 'real';
+  if(/READ:\s*Inconclusive/i.test(t)) return null;
+  if(/lean[s]?[^.]{0,40}AI[- ]?generat/i.test(t)) return 'ai';
+  if(/(consistent with|rather than)[^.]{0,30}(real|genuine|authentic|photograph)/i.test(t)) return 'real';
+  return null;
+}
 function computeConsensus(prov, reach, debunked, count, examined, vintage, mismatchYear, aiConcern){
   const E='Consensus — the evidence, weighed';
   const places = count ? ` (seen across ${spreadPhrase(count)})` : '';
@@ -486,6 +496,11 @@ function computeConsensus(prov, reach, debunked, count, examined, vintage, misma
   if(prov==='camera') return r('photo','Leans authentic','It carries camera/capture data'+(reach==='news'?' and appears on news outlets':'')+' — consistent with a real photo, though metadata can be edited.','Cross-check the time and place it claims. Your call.');
   if(reach==='news') return r('photo','Leans authentic',`The file is stripped, but this image appears on news outlets${places} — consistent with a real news photo.`,'Verify the original context before sharing.');
   if(prov==='credential') return r('verified','Origin on record','It carries a Content Credential — a real record of how it was made. Most images carry none.','Read the credential below; for legal-grade proof use a full verifier.');
+  if(aiConcern==='real'){
+    if(reach==='news'||prov==='camera') return r('photo','Leans authentic',`The closest look found no signs of manipulation, and it ${reach==='news'?'appears on news outlets':'carries camera data'}${places} — our read leans real. Captions and context can still mislead, so verify what it actually shows.`,'Verify the original context before sharing.');
+    return r('photo','Leans real',`The closest look found no manipulation tells${places}, so our read leans real — but a clean frame alone can’t rule out AI video and no provenance or news trail survived, so treat the specifics as unconfirmed.`,'Lean real, but find the original to confirm the context. Your call.');
+  }
+  if(aiConcern==='edited') return r('scrutinize','Possibly edited',`The closest look flagged possible signs of editing${places}, so it leans edited — one signal, not proof; find the original to compare.`,'Find the original to compare. Your call.');
   return r('scrutinize','Unverified','No provenance survived, and no fact-check is on record'+(reach==='stock'?'; it appears on stock-image sites':'')+`${places}. It could be real, AI, or real media with a false caption.`,'Find the original source and check the caption matches. Genuinely your call.');
 }
 
@@ -705,7 +720,7 @@ async function publishToServer(file,hash,localFindings,readObj,sig,claim){
   if(air&&air.text){ setRow('r-ai',{ic:'ai',state:['ai', air.tierLabel||'AI'],readHTML:fmtAIRead(air.text),data:'AI vision · '+(air.model||air.provider)+' — one model’s read; weigh it with the evidence above.'}); }
   else { setRow('r-ai',{ic:'srv',state:['srv','—'],read:'AI vision isn’t switched on yet (add a vision API key).',data:'Free: Gemini · Pro: Claude.'}); }
   // ── CONSENSUS: now that every stream is in, weigh them into the top read ──
-  var aiConcern = (air && /READ:\s*Likely AI-generated/i.test(air.text || '')) ? 'ai' : null;
+  var aiConcern = aiLeanOf(air && air.text);
   if((rev.connected && !rev.limited) || debunked || aiConcern){
     renderRead(computeConsensus(prov, reachFlag, debunked, count, examined, vintage, mismatchYear, aiConcern));
   }
