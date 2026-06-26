@@ -153,6 +153,9 @@
   .row-main{min-width:0}
   .row-name{font-family:var(--display);font-weight:600;font-size:15px}
   .row-read{color:var(--graphite);font-size:13.5px;margin-top:4px;line-height:1.5;overflow-wrap:anywhere;white-space:pre-line}
+  .srow{padding:11px 16px;border-top:1px solid var(--line)}
+  .srow-name{font-family:var(--display);font-weight:600;font-size:14px;line-height:1.4;overflow-wrap:anywhere}
+  .srow-meta{color:var(--graphite);font-size:12.5px;margin-top:2px;overflow-wrap:anywhere}
   .row-data{display:none;font-family:var(--mono);font-size:12px;color:var(--ink);background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:7px 10px;margin-top:9px;word-break:break-word;white-space:pre-wrap;line-height:1.5}
   .row.open .row-data{display:block}
   .row.has-data{cursor:pointer}
@@ -768,7 +771,7 @@ function renderLinkRead(p){
   var capTxt = (p.caption && (p.caption.title||p.caption.description)) ? '“'+esc(p.caption.title||p.caption.description)+'”'+(p.caption.source?' — '+esc(p.caption.source):'') : '';
   var body='';
   if(p.cc && p.cc.read){ body = '<div class="sec" style="margin-bottom:6px">The poster’s claim — checked</div>' + claimBanner(p.cc.read) + sourceList(p.cc.sources); }
-  else if(p.checking){ body = '<div class="sec" style="margin-bottom:6px">The poster’s claim</div>' + (capTxt?'<div class="card" style="margin-bottom:8px"><div class="row"><div class="row-main"><div class="row-read">'+capTxt+'</div></div></div></div>':'') + '<p class="tip">Checking the claim against the evidence…</p>'; }
+  else if(p.checking){ body = '<div class="sec" style="margin-bottom:6px">The poster’s claim</div>' + (capTxt?'<div class="card" style="margin-bottom:8px"><div class="row-read">'+capTxt+'</div></div>':'') + '<p class="tip">Checking the claim against the evidence…</p>'; }
   else if(p.blocked){ body = '<div class="read-banner r-amber" style="border-radius:13px"><div class="rb-eyebrow">Couldn’t read this link</div><div class="rb-badge"><span class="dotb"></span>Use the file or the extension</div><div class="rb-line">'+esc(p.note||'')+'</div></div>'; }
   var note = (p.note && !p.blocked) ? '<p class="tip" style="margin-top:8px">'+esc(p.note)+'</p>' : '';
   return where + body + note;
@@ -881,7 +884,7 @@ function claimBanner(rd){
 }
 function sourceList(s){
   if(!s||!s.items||!s.items.length) return '';
-  const rows=s.items.slice(0,6).map(m=>{const t=esc(m.title||m.source||'source');const meta=esc((m.source||'')+(m.date?' · '+m.date:''));const name=m.link?`<a href="${esc(m.link)}" target="_blank" rel="noopener noreferrer" style="color:var(--signal);text-decoration:none">${t} ↗</a>`:t;return `<div class="row"><div class="row-main"><div class="row-name">${name}</div><div class="row-read">${meta}</div></div></div>`;}).join('');
+  const rows=s.items.slice(0,6).map(m=>{const t=esc(m.title||m.source||'source');const meta=esc((m.source||'')+(m.date?' · '+m.date:''));const name=m.link?`<a href="${esc(m.link)}" target="_blank" rel="noopener noreferrer" style="color:var(--signal);text-decoration:none">${t} ↗</a>`:t;return `<div class="srow"><div class="srow-name">${name}</div><div class="srow-meta">${meta}</div></div>`;}).join('');
   return `<div class="card" style="margin-top:12px"><div class="sec">Sources — read them and decide</div>${rows}</div>`;
 }
 async function checkClaim(){
