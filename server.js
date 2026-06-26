@@ -382,6 +382,7 @@ app.get('/api/proxy-image', async (req, res) => {
              || find(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image(?::url)?["']/i)
              || find(/<meta[^>]+name=["']twitter:image["'][^>]+content=["']([^"']+)["']/i)
              || find(/<meta[^>]+content=["']([^"']+)["'][^>]+name=["']twitter:image["']/i);
+      if (!img) { const oe2 = await oembed(u.href).catch(() => null); if (oe2 && oe2.thumb) img = oe2.thumb; }
       if (!img) return res.status(422).json({ error: 'No image found on that page. Sites like X, Instagram and TikTok block automatic fetching — use Copy image → Ctrl+V instead.' });
       img = new URL(img, u.href).href;
       // read the claim wrapped around the image (the caption is where the lie usually lives)
@@ -401,6 +402,111 @@ app.get('/api/proxy-image', async (req, res) => {
     return res.status(502).json({ error: 'Couldn’t reach that link.' });
   }
 });
+
+/* ---------- read a social / news LINK: the media + the poster's caption, checked ----------
+   oEmbed (YouTube/TikTok/Vimeo) and og/twitter meta tags pull the preview thumbnail and the
+   caption; the caption then runs through the same claim engine as the bot and /api/check-claim.
+   Locked platforms (X, Instagram) block this — we say so and point to the file / extension. */
+const OEMBED = [
+  { re: /(^|\.)youtube\.com$|(^|\.)youtu\.be$/i,        ep: u => 'https://www.youtube.com/oembed?format=json&url=' + encodeURIComponent(u), video: true },
+  { re: /(^|\.)tiktok\.com$/i,                           ep: u => 'https://www.tiktok.com/oembed?url=' + encodeURIComponent(u),            video: true },
+  { re: /(^|\.)vimeo\.com$/i,                            ep: u => 'https://vimeo.com/api/oembed.json?url=' + encodeURIComponent(u),         video: true },
+];
+async function oembed(pageUrl) {
+  let host; try { host = new URL(pageUrl).hostname; } catch { return null; }
+  const m = OEMBED.find(o => o.re.test(host));
+  if (!m) return null;
+  try {
+    const r = await fetch(m.ep(pageUrl), { headers: { 'User-Agent': FETCH_UA, 'Accept': 'application/json' }, redirect: 'follow', signal: AbortSignal.timeout(7000) });
+    if (!r.ok) return null;
+    const j = await r.json();
+    return { title: clip(decodeEntities(j.title || ''), 300), author: clip(decodeEntities(j.author_name || ''), 80), thumb: (j.thumbnail_url || '').toString(), video: m.video || /video/i.test(j.type || '') };
+  } catch { return null; }
+}
+function platformOf(host) {
+  host = (host || '').toLowerCase().replace(/^www\./, '');
+  if (/(^|\.)x\.com$|(^|\.)twitter\.com$/.test(host))    return { name: 'X', locked: true };
+  if (/(^|\.)instagram\.com$/.test(host))                return { name: 'Instagram', locked: true };
+  if (/(^|\.)facebook\.com$|(^|\.)fb\.watch$/.test(host)) return { name: 'Facebook', locked: true };
+  if (/(^|\.)threads\.net$/.test(host))                  return { name: 'Threads', locked: true };
+  if (/(^|\.)tiktok\.com$/.test(host))                   return { name: 'TikTok', locked: false };
+  if (/(^|\.)youtube\.com$|(^|\.)youtu\.be$/.test(host)) return { name: 'YouTube', locked: false };
+  if (/(^|\.)vimeo\.com$/.test(host))                    return { name: 'Vimeo', locked: false };
+  if (/(^|\.)reddit\.com$/.test(host))                   return { name: 'Reddit', locked: false };
+  return { name: host, locked: false };
+}
+
+app.get('/api/check-link', async (req, res) => {
+  if (!(await allow('proxy', clientIp(req), RL_PROXY.max, RL_PROXY.win)))
+    return res.status(429).json({ error: 'Too many link reads right now — wait a moment and try again.' });
+  const raw = (req.query.url || '').toString().trim();
+  let u; try { u = new URL(raw); } catch { return res.status(400).json({ error: 'That does not look like a valid link.' }); }
+  if (!/^https?:$/.test(u.protocol)) return res.status(400).json({ error: 'Only http and https links are supported.' });
+  if (hostBlocked(u.hostname)) return res.status(400).json({ error: 'That address is not allowed.' });
+
+  const plat = platformOf(u.hostname);
+  let caption = null, mediaUrl = null, isVideo = false;
+
+  // 1) oEmbed first — caption + thumbnail with no scraping (a TikTok caption lives here)
+  const oe = await oembed(u.href).catch(() => null);
+  if (oe) {
+    if (oe.title) caption = { title: oe.title, description: '', source: plat.name + (oe.author ? ' · ' + oe.author : '') };
+    if (oe.thumb) mediaUrl = oe.thumb;
+    if (oe.video) isVideo = true;
+  }
+
+  // 2) og / twitter meta tags — news sites and many platforms expose the caption + preview here
+  if (!caption || !mediaUrl) {
+    try {
+      const resp = await grab(u.href, 'text/html,application/xhtml+xml,*/*;q=0.8');
+      const ct = (resp.headers.get('content-type') || '').toLowerCase();
+      if (ct.includes('html') || ct === '') {
+        const html = (await resp.text()).slice(0, 800000);
+        if (!mediaUrl) {
+          const find = re => { const m = html.match(re); return m ? m[1] : null; };
+          let img = find(/<meta[^>]+property=["']og:image(?::url)?["'][^>]+content=["']([^"']+)["']/i)
+                 || find(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image(?::url)?["']/i)
+                 || find(/<meta[^>]+name=["']twitter:image["'][^>]+content=["']([^"']+)["']/i)
+                 || find(/<meta[^>]+content=["']([^"']+)["'][^>]+name=["']twitter:image["']/i);
+          if (img) mediaUrl = img;
+        }
+        if (/property=["']og:video|name=["']twitter:player/i.test(html)) isVideo = true;
+        if (!caption) caption = extractClaim(html, plat.name);
+      }
+    } catch { /* blocked / unreachable — handled below */ }
+  }
+
+  if (mediaUrl) { try { mediaUrl = new URL(mediaUrl, u.href).href; } catch { mediaUrl = null; } }
+
+  // 3) check the poster's caption with the same claim engine as the bot
+  let captionCheck = null;
+  const capText = caption && (caption.title || caption.description) ? (caption.title || caption.description) : '';
+  if (capText) {
+    let tier = 'free';
+    try { tier = (await billing.tierOf(req)).tier || 'free'; } catch {}
+    const rid = deviceId(req, res);
+    const limit = tier === 'pro' ? billing.PRO_DAILY : FREE_DAILY;
+    if ((await quotaGet(rid)) >= limit) {
+      captionCheck = { limited: true, read: { eyebrow: 'Consensus — the evidence, weighed', level: 'scrutinize', badge: 'Free limit reached', line: 'You have used today’s free checks — sign in / upgrade to keep checking the poster’s claim.' }, sources: { count: 0, items: [] } };
+    } else {
+      try {
+        const cls = ai && ai.analyzeClaim ? await ai.analyzeClaim({ tier, text: capText }).catch(() => null) : null;
+        captionCheck = await claims.analyze(capText, cls, tier);
+        quotaInc(rid).catch(() => {});
+      } catch (e) { captionCheck = null; }
+    }
+  }
+
+  const blocked = !caption && !mediaUrl;
+  let note = '';
+  if (isVideo) note = 'This is a video post — Relity reads the poster’s thumbnail frame and the caption. The full clip can’t be pulled from a link; to check the footage itself, download it and drop the file here.';
+  if (blocked) note = plat.locked
+    ? `${plat.name} blocks reading posts from a link. Drop the image or video file here, or use the Relity browser extension right on the post.`
+    : 'Could not read a caption or preview from that link. Drop the file here, or paste the caption to check it.';
+
+  res.json({ ok: !blocked, platform: plat.name, locked: !!plat.locked, isVideo, mediaUrl: mediaUrl || null, caption: caption || null, captionCheck, blocked, note });
+});
+
 
 /* ---------- the shareable result page (unfurls on social) ---------- */
 // read meaning from WHERE an image appears (mirrors the client)

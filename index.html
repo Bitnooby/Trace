@@ -260,6 +260,7 @@
     </div>
 
     <div class="read-banner" id="readBanner"></div>
+    <div id="captionVerdict"></div>
 
     <div class="ledger">
       <div class="ledger-top">
@@ -473,6 +474,7 @@ async function analyze(file, claim){
 
   const readObj=computeRead({c2paAI:scan.c2paAI,c2paSigner:scan.c2paSigner,c2pa:scan.c2pa,aiName:scan.aiName,cam,when,gps:exif.__gps});
   renderRead(readObj);
+  var _cv=document.getElementById('captionVerdict'); if(_cv){ _cv.innerHTML=(typeof pendingLinkRead!=='undefined'&&pendingLinkRead)?renderLinkRead(pendingLinkRead):''; pendingLinkRead=null; }
 
   const camScore=(cam?1:0)+(when?1:0)+(exif.__gps?1:0);
   const meters=[
@@ -728,27 +730,43 @@ async function pasteFromClipboard(){
   alert('Copy an image or a link first, then tap Paste (or press Ctrl+V).');
 }
 $('#pasteBtn').addEventListener('click',pasteFromClipboard);
+var pendingLinkRead=null;
+function renderLinkRead(p){
+  if(!p) return '';
+  var where = p.platform ? '<div class="tip" style="margin:0 0 8px;opacity:.85">Posted on <b>'+esc(p.platform)+'</b></div>' : '';
+  var body='';
+  if(p.cc && p.cc.read){ body = '<div class="sec" style="margin-bottom:6px">The poster’s claim — checked</div>' + claimBanner(p.cc.read) + sourceList(p.cc.sources); }
+  else if(p.blocked){ body = '<div class="read-banner r-amber" style="border-radius:13px"><div class="rb-eyebrow">Couldn’t read this link</div><div class="rb-badge"><span class="dotb"></span>Use the file or the extension</div><div class="rb-line">'+esc(p.note||'')+'</div></div>'; }
+  var note = (p.note && !p.blocked) ? '<p class="tip" style="margin-top:8px">'+esc(p.note)+'</p>' : '';
+  return where + body + note;
+}
 async function checkLink(){
-  const url=$('#linkInput').value.trim(); if(!url){$('#linkInput').focus();return;}
-  const base=apiBase();
-  if(!base){ alert('Pasting a link needs the live server. Open the deployed site — or right-click the image, choose “Copy image”, and press Ctrl+V here.'); return; }
-  const btn=$('#linkBtn'); const label=btn.textContent; btn.textContent='Fetching…'; btn.disabled=true;
+  var url=$('#linkInput').value.trim(); if(!url){$('#linkInput').focus();return;}
+  var base=apiBase();
+  if(!base){ alert('Reading a link needs the live server. Open relity.ai.'); return; }
+  var btn=$('#linkBtn'); var label=btn?btn.textContent:''; if(btn){btn.textContent='Reading…'; btn.disabled=true;}
+  var out=$('#claimOut'); if(out) out.innerHTML='<p class="tip">Reading the link…</p>';
+  pendingLinkRead=null;
   try{
-    const r=await fetch(base+'/api/proxy-image?url='+encodeURIComponent(url));
-    if(!r.ok){
-      let msg='Couldn’t pull an image from that link automatically.';
-      try{ const j=await r.json(); if(j&&j.error) msg=j.error; }catch(_){}
-      alert(msg+'\n\nReliable trick: right-click the image → “Copy image”, come back here and press Ctrl+V. That works even when a link won’t.');
-      return;
+    var r=await fetch(base+'/api/check-link?url='+encodeURIComponent(url));
+    var j=await r.json();
+    if(!r.ok && j && j.error){ if(out) out.innerHTML='<p class="tip">'+esc(j.error)+'</p>'; return; }
+    if(j && j.mediaUrl){
+      pendingLinkRead={cc:j.captionCheck, platform:j.platform, note:j.note, blocked:false};
+      if(out) out.innerHTML='';
+      var ok=false;
+      try{
+        var ir=await fetch(base+'/api/proxy-image?url='+encodeURIComponent(j.mediaUrl));
+        if(ir.ok){ var blob=await ir.blob(); if(blob.type && blob.type.indexOf('image/')===0){ ok=true; handleFile(new File([blob],'from-link',{type:blob.type}), j.caption||null); } }
+      }catch(_){}
+      if(!ok){ pendingLinkRead=null; if(out) out.innerHTML=renderLinkRead({cc:j.captionCheck, platform:j.platform, note:j.note, blocked:!j.captionCheck}); }
+    } else {
+      if(out) out.innerHTML=renderLinkRead({cc:(j&&j.captionCheck), platform:(j&&j.platform), note:(j&&j.note), blocked:!!(j&&j.blocked)});
     }
-    let claim=null; const ch=r.headers.get('X-Relity-Claim');
-    if(ch){ try{ claim=JSON.parse(decodeURIComponent(ch)); }catch(_){ } }
-    const blob=await r.blob();
-    if(!blob.type.startsWith('image/')){ alert('That link didn’t return an image.\n\nTry right-click → “Copy image”, then press Ctrl+V here.'); return; }
-    handleFile(new File([blob],'from-link',{type:blob.type}), claim);
+    try{ refreshMe(); }catch(_){}
   }catch(_){
-    alert('Could not reach that link. Check the address — or right-click the image, “Copy image”, and press Ctrl+V here.');
-  }finally{ btn.textContent=label; btn.disabled=false; }
+    if(out) out.innerHTML='<p class="tip">Could not reach the server to read that link.</p>';
+  }finally{ if(btn){btn.textContent=label; btn.disabled=false;} }
 }
 function heroCheck(){
   const v=$('#linkInput').value.trim();
@@ -762,7 +780,7 @@ $('#linkBtn').addEventListener('click',heroCheck);
 $('#linkInput').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();heroCheck();}});
 /* if a full URL is pasted into the box, just run it */
 $('#linkInput').addEventListener('paste',()=>{ setTimeout(()=>{ const v=$('#linkInput').value.trim(); if(/^https?:\/\/\S+$/i.test(v)) checkLink(); },40); });
-function reset(){dossier.classList.remove('show');$('#submitPanel').style.display='';$('#linkInput').value='';const cap=$('#captionInput');if(cap)cap.value='';fileInput.value='';window.scrollTo({top:0,behavior:'smooth'});}
+function reset(){dossier.classList.remove('show');$('#submitPanel').style.display='';$('#linkInput').value='';const cap=$('#captionInput');if(cap)cap.value='';fileInput.value='';var _co=document.getElementById('claimOut');if(_co)_co.innerHTML='';var _vo=document.getElementById('videoOut');if(_vo)_vo.innerHTML='';var _cv2=document.getElementById('captionVerdict');if(_cv2)_cv2.innerHTML='';pendingLinkRead=null;window.scrollTo({top:0,behavior:'smooth'});}
 $('#againBtn').addEventListener('click',reset); $('#resetBtn').addEventListener('click',reset);
 $('#copyBtn').addEventListener('click',()=>{const t=$('#shareUrl').textContent;navigator.clipboard?.writeText(t).then(()=>{const b=$('#copyBtn'),o=b.textContent;b.textContent='Copied';setTimeout(()=>b.textContent=o,1400);});});
 
