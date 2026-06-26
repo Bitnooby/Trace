@@ -639,6 +639,61 @@ app.get('/trending', async (req, res) => {
   res.send(page('Relity — Trending checks', body, base, null, true));
 });
 
+app.get('/why-ai-video-detectors-fail', (req, res) => {
+  const base = `${req.protocol}://${req.get('host')}`;
+  const og = `
+    <meta property="og:title" content="Why AI-Video Detectors Fail — and What Actually Works" />
+    <meta property="og:description" content="The fakes now look exactly like the truth. Why deepfake detectors fail — and what actually works: provenance, the web trail, and your own judgment. Evidence, not verdicts." />
+    <meta property="og:type" content="article" />
+    <meta property="og:image" content="${base}/og-card.png" />
+    <meta name="twitter:card" content="summary_large_image" />`;
+  const body = `
+    <div class="article">
+      <a class="article-back" href="${base}/">← Relity</a>
+      <h1 class="article-h1">Why AI-Video Detectors Fail — and What Actually Works</h1>
+      <p class="article-by">Evidence, not verdicts.</p>
+      <p>In 2026, AI video crossed a line. Google's <b>Veo 3.1</b> and <b>Kling 3.0</b> now render cinematic lighting, natural motion, fabric and water and hair that behave, even synced audio. <b>Sora 2</b> produces clips most people cannot tell apart from a phone recording. The industry's own word for this moment is "production-ready." For anyone trying to tell what's real online, that's the whole problem in one sentence: <b>the fakes now look exactly like the truth.</b></p>
+      <p>The instinct is to reach for a detector — an app that scans a clip and announces "94% fake" or "98% authentic." It feels like the answer. It isn't. Here's why, and what to do instead.</p>
+      <h2>The 98% that isn't there</h2>
+      <p>Detection vendors love a big number. The trouble is <i>where that number comes from.</i> Leading detectors score 90–99% on the data they were trained and tested on — and <b>50–65% on deepfakes they haven't seen before.</b> In real-world conditions, measured accuracy drops <b>45–50%</b> from the lab benchmark. That's a coin flip wearing a lab coat.</p>
+      <p>Three forces break detectors in the wild:</p>
+      <ul>
+        <li><b>Distribution shift.</b> A detector trained before a new model ships is partly blind to that model's output until it's retrained. AI generators improve every month; detectors are always chasing last quarter's fakes.</li>
+        <li><b>The real world is messy.</b> Detection that works on clean lab clips falls apart on memes, screen-recordings, vertical crops, re-compressions and filters — exactly how media actually travels.</li>
+        <li><b>A single frame can be flawless.</b> The deepest one. AI video is photoreal <i>per frame</i>; whatever tells exist live in motion and time. Pull one still from a synthetic clip and even a careful forensic look may find nothing wrong — because nothing in that frame <i>is</i> wrong.</li>
+      </ul>
+      <p>That last point is why a confident verdict is <i>worse</i> than no verdict. When a tool stamps "authentic, 98%" on a fake, it doesn't just miss — it launders the fake with false authority. Trust spent that way doesn't come back.</p>
+      <h2>What actually works: not one signal — several</h2>
+      <p>There is no magic pixel that says "AI." But there are independent signals, and weighed together the picture usually resolves. No single one is proof on its own — that's the point.</p>
+      <p><b>1. Provenance (Content Credentials / C2PA).</b> The most durable answer is a cryptographic record of where a file came from and how it was edited. The open standard — backed by Adobe, the BBC, Microsoft and Intel — is no longer theoretical: Google's <b>Pixel 10 signs every photo by default</b> with hardware-backed keys; <b>Leica, Nikon, Canon, Fujifilm and Samsung</b> ship C2PA-capable cameras; and tools like <b>DALL·E and Sora</b> embed credentials that declare AI origin. The catch: social platforms strip this data on upload — so its <b>absence proves nothing</b>, while its <b>presence is gold.</b></p>
+      <p><b>2. Where it appears.</b> Run the image across the web. Does it trace back to a news wire or a documented event — or surface first on AI-image sites, or only on anonymous social accounts? A genuine news photo leaves a credible trail; a fabricated one usually doesn't.</p>
+      <p><b>3. The fact-check record.</b> Has this exact clip already been examined? And read carefully <i>what</i> was rated false: a "false" verdict most often means <b>miscaptioning</b> — real footage paired with a false story — not that nothing happened. <i>Real event, wrong video</i> is the most common form of visual misinformation, and the one a blunt "FAKE" label gets wrong.</p>
+      <p><b>4. The forensic read.</b> An AI model's close look — malformed hands, melted text, impossible physics, light that doesn't agree. Useful as <i>one</i> signal; fallible as a verdict. And never forget the frame problem: a clean still cannot clear the whole video.</p>
+      <p>Weigh those four together and you get the thing a detector cannot give you: an honest read, with its reasons exposed, that you can check for yourself.</p>
+      <h2>How Relity does it</h2>
+      <p>This is the entire reason Relity exists, and why our rule is <b>"evidence, not a verdict."</b> We don't hand you a number and tell you to trust it. We show you the provenance, where the image appears, the fact-check record, and an AI vision read — each labeled with its caveats — converging into one honest best guess. When the signals conflict, we say so. When we genuinely can't tell, we say <i>that</i>, too. And when fact-checkers have flagged a real clip as miscaptioned, we tell you the event may well be real and the footage is what's being misused — not that "the news is fake."</p>
+      <p>The result is the opposite of a black-box detector: you see what we found, you see what we couldn't, and <b>you make the call.</b> In a world where the fakes are perfect, that humility isn't a weakness. It's the only honest position left.</p>
+      <h2>What you can do right now</h2>
+      <ul>
+        <li><b>Distrust the number.</b> "94% real" is theater. Ask what <i>evidence</i> the tool is standing on.</li>
+        <li><b>Check the caption against the footage.</b> Most viral fakes are real clips with a false story bolted on. "Happening right now" is a reason to slow down, not speed up.</li>
+        <li><b>Find the original.</b> A reverse-image search, or a trip to the source account, often ends the mystery in seconds.</li>
+        <li><b>Be suspicious of the too-perfect.</b> "Future-tech" feats, impossible stunts, oddly-satisfying perfection — exactly what AI video is best at, and what spreads fastest.</li>
+      </ul>
+      <p>The future of telling real from fake isn't a smarter detector. It's <b>provenance you can verify, a plurality of signals you can weigh, and a human — you — making the final call.</b> Anyone selling you certainty is selling the one thing that's hardest to come by.</p>
+      <div class="article-cta">Relity shows the evidence and lets you decide. <a href="${base}/">Check a link, image, or post →</a></div>
+      <h3>Sources</h3>
+      <ul class="article-src">
+        <li><a href="https://aimlapi.com/blog/best-ai-video-generators-2026-veo-3-1-kling-sora-2-seedance-more-compared" target="_blank" rel="noopener noreferrer">Best AI Video Generators 2026 — AI/ML API</a></li>
+        <li><a href="https://www.scam.ai/en/learn/deepfake-detection-accuracy" target="_blank" rel="noopener noreferrer">Deepfake detection accuracy — Scam.ai</a></li>
+        <li><a href="https://sider.ai/blog/ai-tools/deepfake-detection-in-2025-methods-benchmarks-and-what-actually-works" target="_blank" rel="noopener noreferrer">Deepfake detection in 2025 — Sider</a></li>
+        <li><a href="https://www.eyesift.com/faq/c2pa-content-credentials-2026-cryptographic-provenance-adoption/" target="_blank" rel="noopener noreferrer">C2PA adoption 2026 — Eyesift</a></li>
+        <li><a href="https://en.wikipedia.org/wiki/Content_Credentials" target="_blank" rel="noopener noreferrer">Content Credentials — Wikipedia</a></li>
+      </ul>
+    </div>`;
+  res.send(page('Why AI-Video Detectors Fail — Relity', body, base, og, true));
+});
+
 app.get('/check/:id', async (req, res) => {
   const r = await getReport(req.params.id);
   const base = `${req.protocol}://${req.get('host')}`;
@@ -842,6 +897,19 @@ function page(title, body, base, og, wide) {
     .tcap{color:var(--g);font-size:12.5px;line-height:1.45;margin-top:6px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
     .tsrc{color:#8A95A4;font-size:11.5px;margin-top:7px;font-family:ui-monospace,monospace}
     .tempty{color:var(--g);font-size:15px;text-align:center;padding:46px 0}
+    .article{max-width:680px;margin:0 auto;padding:6px 0 44px}
+    .article-back{display:inline-block;color:var(--signal);text-decoration:none;font-family:'Space Grotesk',system-ui,sans-serif;font-weight:600;font-size:13px;letter-spacing:.04em;margin-bottom:18px}
+    .article-h1{font-family:'Space Grotesk',system-ui,sans-serif;font-weight:700;font-size:31px;line-height:1.15;letter-spacing:-.02em;margin:0 0 8px;color:var(--ink)}
+    .article-by{color:var(--g);font-size:14px;font-style:italic;margin:0 0 28px}
+    .article h2{font-family:'Space Grotesk',system-ui,sans-serif;font-weight:700;font-size:21px;letter-spacing:-.01em;margin:32px 0 11px;color:var(--ink)}
+    .article h3{font-family:'Space Grotesk',system-ui,sans-serif;font-weight:700;font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--g);margin:30px 0 10px}
+    .article p{font-size:16.5px;line-height:1.68;color:#2b3340;margin:0 0 15px}
+    .article ul{margin:2px 0 16px;padding-left:20px}
+    .article li{font-size:16.5px;line-height:1.6;color:#2b3340;margin:0 0 9px}
+    .article a{color:var(--signal);text-decoration:underline;text-underline-offset:2px}
+    .article-cta{background:#E6F4F4;border:1px solid #C5E5E5;border-radius:13px;padding:16px 18px;margin:26px 0 8px;font-size:15.5px;color:#274545}
+    .article-cta a{color:var(--signal);font-weight:600;text-decoration:none}
+    .article-src li{font-size:13.5px;margin:0 0 6px}
   </style></head><body><div class="w${wide ? ' wide' : ''}">
     <div class="brand"><span class="g"><svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg"><g stroke="#fff" stroke-width="8" stroke-linecap="round"><line x1="32" y1="34" x2="50" y2="52"/><line x1="50" y1="52" x2="70" y2="36"/><line x1="50" y1="52" x2="52" y2="78"/></g><circle cx="32" cy="34" r="8" fill="#fff"/><circle cx="70" cy="36" r="8" fill="#fff"/><circle cx="52" cy="78" r="8" fill="#fff"/><circle cx="50" cy="52" r="9.5" fill="#fff"/></svg></span> Relity</div>${body}
   </div></body></html>`;
