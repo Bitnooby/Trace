@@ -7,7 +7,7 @@
    ============================================================ */
 const crypto = require('crypto');
 
-module.exports = function telegram({ claims, ai, img, video } = {}) {
+module.exports = function telegram({ claims, ai, img, video, news, redisOn, redisCmd } = {}) {
   const TOKEN  = process.env.TELEGRAM_BOT_TOKEN || '';
   const SECRET = process.env.RELITY_SECRET || 'dev-insecure';
   const BASE   = (process.env.RELITY_URL || 'https://relity.ai').replace(/\/$/, '');
@@ -23,6 +23,49 @@ module.exports = function telegram({ claims, ai, img, video } = {}) {
     return r.json();
   }
   const send = (chatId, text) => api('sendMessage', { chat_id: chatId, text, parse_mode: 'HTML', disable_web_page_preview: true });
+
+  // ---- daily corroborated-news digest ----
+  const DIGEST_HOUR = Number.isFinite(+process.env.DIGEST_HOUR) ? +process.env.DIGEST_HOUR : 13; // UTC hour
+  const memSubs = new Set();
+  let lastSentDay = '';
+  async function subAdd(id) { id = String(id); memSubs.add(id); if (redisOn) { try { await redisCmd(['SADD', 'relity:digest:subs', id]); } catch {} } }
+  async function subDel(id) { id = String(id); memSubs.delete(id); if (redisOn) { try { await redisCmd(['SREM', 'relity:digest:subs', id]); } catch {} } }
+  async function subList() { if (redisOn) { try { const v = await redisCmd(['SMEMBERS', 'relity:digest:subs']); if (Array.isArray(v)) return v; } catch {} } return [...memSubs]; }
+  async function buildDigest() {
+    if (!news || !news.getFeed) return null;
+    let data; try { data = await news.getFeed(); } catch { return null; }
+    const corrob = (data.clusters || []).filter(c => c.n >= 2).slice(0, 8);
+    if (!corrob.length) return null;
+    let msg = '🗞️ <b>Relity — corroborated today</b>\n<i>Ranked by how many independent newsrooms carry each story. Breadth of reporting, not proof — read and decide.</i>\n';
+    corrob.forEach((c, i) => {
+      msg += '\n<b>' + (i + 1) + '. ' + esc(c.rep.title) + '</b>\n' + c.n + ' outlets · ' + esc(c.outlets.join(', ')) + '\n<a href="' + esc(c.rep.link) + '">Read →</a>\n';
+    });
+    msg += '\n📡 Full feed: ' + BASE + '/feed\nSend /unsubscribe to stop.';
+    return msg;
+  }
+  async function sendDigest() {
+    const msg = await buildDigest();
+    if (!msg) return { sent: 0, skipped: true };
+    const subs = await subList();
+    let sent = 0;
+    for (const id of subs) {
+      try { const r = await send(id, msg); if (r && r.ok) sent++; else if (r && r.error_code === 403) await subDel(id); } catch {}
+      await new Promise(r => setTimeout(r, 45));
+    }
+    console.log('telegram digest: sent ' + sent + '/' + subs.length);
+    return { sent, total: subs.length };
+  }
+  async function digestTick() {
+    try {
+      const now = new Date();
+      if (now.getUTCHours() !== DIGEST_HOUR) return;
+      const today = now.toISOString().slice(0, 10);
+      if (redisOn) { try { if (await redisCmd(['GET', 'relity:digest:lastsent']) === today) return; await redisCmd(['SET', 'relity:digest:lastsent', today]); } catch {} }
+      if (lastSentDay === today) return;
+      lastSentDay = today;
+      await sendDigest();
+    } catch (e) { console.error('digestTick:', e.message); }
+  }
 
   async function download(fileId) {
     const f = await api('getFile', { file_id: fileId });
@@ -119,11 +162,14 @@ module.exports = function telegram({ claims, ai, img, video } = {}) {
       if (vid && vid.file_id) { await checkVideoMessage(chatId, vid.file_id, m.caption || ''); return; }
 
       if (/^\/(start|help)\b/.test(text)) {
-        await send(chatId, '👋 <b>Relity</b> — evidence, not verdicts.\n\nSend me any of these and I’ll show the evidence:\n• a <b>claim / headline / post</b> → is it a checkable claim backed by evidence, or just opinion?\n• an <b>image</b> → where it appears online + an AI read\n• a <b>video file</b> → where its frames appear online\n\nNote: I can’t open videos from X/social <i>links</i> — download the clip and send the file. Full site: ' + BASE);
+        await send(chatId, '👋 <b>Relity</b> — evidence, not verdicts.\n\nSend me any of these and I’ll show the evidence:\n• a <b>claim / headline / post</b> → is it a checkable claim backed by evidence, or just opinion?\n• an <b>image</b> → where it appears online + an AI read\n• a <b>video file</b> → where its frames appear online\n\nNote: I can’t open videos from X/social <i>links</i> — download the clip and send the file.\n\n🗞️ /subscribe — a daily digest of what multiple newsrooms corroborate.\n\nFull site: ' + BASE);
         return;
       }
       if (!text) { await send(chatId, 'Send me a claim, headline, image, or video and I’ll show the evidence.'); return; }
 
+      if (/^\/subscribe\b/.test(text)) { await subAdd(chatId); await send(chatId, '✅ Subscribed. You’ll get the <b>daily corroborated-news digest</b> — the top stories multiple independent newsrooms are carrying. Send /digest to see today’s now, or /unsubscribe to stop.'); return; }
+      if (/^\/unsubscribe\b/.test(text)) { await subDel(chatId); await send(chatId, 'Done — you’re unsubscribed from the daily digest. Send /subscribe anytime to resume.'); return; }
+      if (/^\/digest\b/.test(text)) { const msg = await buildDigest(); await send(chatId, msg || 'No multi-outlet stories on the radar right now — check back soon, or see ' + BASE + '/feed.'); return; }
       const stripped = text.replace(/https?:\/\/\S+/gi, '').trim();
       if (!stripped) {
         await send(chatId, '🔗 That’s a link on its own. I can’t open videos or posts from X/social links directly. To check:\n• an <b>image</b> or <b>video</b> → download it and send the <b>file</b> here\n• a <b>claim</b> → send the text, not just the link\n\nOr paste the link at ' + BASE + '.');
@@ -150,6 +196,8 @@ module.exports = function telegram({ claims, ai, img, video } = {}) {
       const j = await api('setWebhook', { url: BASE + '/webhook/telegram', secret_token: hookSecret, allowed_updates: ['message'] });
       console.log('telegram setWebhook:', j && j.ok ? 'ok @ ' + BASE + '/webhook/telegram' : JSON.stringify(j).slice(0, 160));
     } catch (e) { console.error('telegram register:', e.message); }
+    setInterval(digestTick, 5 * 60 * 1000);
+    console.log('telegram digest scheduler armed for ' + DIGEST_HOUR + ':00 UTC');
   }
 
   return { mount, register, configured: on };
