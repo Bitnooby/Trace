@@ -35,6 +35,7 @@ const SERPAPI_KEY   = process.env.SERPAPI_KEY   || '';   // serpapi.com — Goog
 const FACTCHECK_KEY = process.env.FACTCHECK_KEY || '';   // Google Fact Check Tools API
 const REDIS_URL     = process.env.UPSTASH_REDIS_REST_URL   || '';  // Upstash Redis (REST) — keeps shared reports alive across deploys
 const REDIS_TOKEN   = process.env.UPSTASH_REDIS_REST_TOKEN || '';
+const ADMIN_KEY     = process.env.ADMIN_KEY || '';   // owner-only moderation key for the trending feed (set in Render env)
 const redisOn = !!(REDIS_URL && REDIS_TOKEN);
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 12 * 1024 * 1024 } });
@@ -119,6 +120,8 @@ function deviceId(req, res) {
   }
   return id;
 }
+const ADMIN_TOK = ADMIN_KEY ? crypto.createHash('sha256').update('relity-admin:' + ADMIN_KEY).digest('hex') : '';
+function isAdmin(req){ return !!(ADMIN_TOK && readCookie(req, 'radm') === ADMIN_TOK); }
 async function quotaGet(id) {
   const k = `relity:q:${id}:${today()}`;
   if (redisOn) { try { return +(await redisCmd(['GET', k])) || 0; } catch { /* fall back */ } }
@@ -162,17 +165,26 @@ async function reverseSearch(publicImageUrl) {
     const r = await fetch(u);
     const j = await r.json();
     if (!r.ok || j.error) return DEGRADED;   // quota exhausted, bad key, or any SerpAPI error JSON
-    const matches = (j.visual_matches || []).slice(0, 8).map(m => ({
-      title: m.title, source: m.source, link: m.link, date: m.date || null
-    }));
-    const domains = [...new Set((j.visual_matches || []).map(m => {
-      try { return new URL(m.link).hostname.replace(/^www\./, ''); } catch { return (m.source || '').toLowerCase(); }
-    }).filter(Boolean))].slice(0, 6);
-    const dated = matches.filter(m => m.date).sort((a, b) => new Date(a.date) - new Date(b.date));
+    // commerce / stock reuse is noise for the "where it appears" signal: a viral photo
+    // turned into wigs on a marketplace or sold on a stock site says nothing about its truth.
+    // Keep it visible in the report, but it must not inflate the reach count, set the
+    // "earliest" vintage, or pollute the captions handed to the fact-checker.
+    const NOISE = ['aliexpress','alibaba','amazon.','amzn','ebay.','etsy','walmart','temu','wish.com','dhgate','redbubble','teepublic','zazzle','society6','spreadshirt','shutterstock','istockphoto','gettyimages','freepik','stock.adobe','adobestock','dreamstime','alamy','123rf','depositphotos','vecteezy','pexels','unsplash','pixabay','can-stock','wallpaperaccess','wallhaven'];
+    const hostOf = m => { try { return new URL(m.link).hostname.replace(/^www\./, ''); } catch { return (m.source || '').toLowerCase(); } };
+    const isNoise = h => NOISE.some(k => (h || '').includes(k));
+    const tagged = (j.visual_matches || []).map(m => { const h = hostOf(m); return { m, h, noise: isNoise(h) }; });
+    const signal = tagged.filter(x => !x.noise);
+    const noise  = tagged.filter(x => x.noise);
+    const ordered = [...signal, ...noise];                       // signal-bearing matches lead
+    const matches = ordered.slice(0, 8).map(x => ({ title: x.m.title, source: x.m.source, link: x.m.link, date: x.m.date || null }));
+    const domains = [...new Set(ordered.map(x => x.h).filter(Boolean))].slice(0, 6);
+    const dated = signal.map(x => x.m).filter(m => m.date).sort((a, b) => new Date(a.date) - new Date(b.date));
     return {
       connected: true,
-      count: (j.visual_matches || []).length,
-      earliest: dated[0] || null,
+      count: signal.length,                                      // credible appearances only (drives reach + spread)
+      rawCount: (j.visual_matches || []).length,                 // total incl. commerce/stock, kept for transparency
+      merch: noise.length,
+      earliest: dated[0] || null,                                // a stock/merch listing can no longer set the vintage
       domains,
       matches
     };
@@ -611,6 +623,19 @@ async function trendList(){
   if(redisOn){ try{ const v=await redisCmd(['LRANGE','relity:trend','0','59']); if(Array.isArray(v)) return v.map(x=>{ try{ return typeof x==='string'?JSON.parse(x):x; }catch{ return null; } }).filter(Boolean); }catch(e){ console.error('trendList:',e.message); } }
   return memTrend.slice();
 }
+const memTrendHidden = new Set();
+async function trendHide(id){
+  try{ memTrendHidden.add(id); }catch{}
+  if(redisOn){ try{ await redisCmd(['SADD','relity:trend:hidden',id]); }catch(e){ console.error('trendHide:',e.message); } }
+}
+async function trendUnhide(id){
+  try{ memTrendHidden.delete(id); }catch{}
+  if(redisOn){ try{ await redisCmd(['SREM','relity:trend:hidden',id]); }catch(e){ console.error('trendUnhide:',e.message); } }
+}
+async function trendHiddenSet(){
+  if(redisOn){ try{ const v=await redisCmd(['SMEMBERS','relity:trend:hidden']); if(Array.isArray(v)) return new Set(v); }catch(e){ console.error('trendHiddenSet:',e.message); } }
+  return new Set(memTrendHidden);
+}
 function consensusOf(r){
   if(!r) return null;
   const provFromLevel = { ai:'ai-marker', verified:'credential', photo:'camera', scrutinize:'stripped' };
@@ -625,19 +650,56 @@ function consensusOf(r){
   const aiConcern = aiLeanOf(r.aiRead && r.aiRead.text);
   return computeConsensus(prov, reachFlag, debunked, reachOK ? (r.reverse.count || 0) : 0, examined, vintage, mismatchYear, aiConcern);
 }
+const TREND_ADMIN_JS = `<script>
+document.querySelectorAll('.thide').forEach(function(b){
+  b.addEventListener('click', function(e){
+    e.preventDefault(); e.stopPropagation();
+    var id=b.getAttribute('data-id'), act=b.getAttribute('data-act')||'hide';
+    var orig=b.textContent; b.disabled=true; b.textContent='…';
+    fetch('/api/trend/'+act,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id})})
+      .then(function(r){ if(r.ok){ var c=b.closest('.tc'); if(c&&c.parentNode) c.parentNode.removeChild(c); } else { b.disabled=false; b.textContent=orig; } })
+      .catch(function(){ b.disabled=false; b.textContent=orig; });
+  });
+});
+</script>`;
 app.get('/trending', async (req, res) => {
   const base = `${req.protocol}://${req.get('host')}`;
   const esc = t => (t == null ? '' : String(t)).replace(/[<>&"]/g, c => ({ '<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;' }[c]));
+  if (ADMIN_KEY && req.query.key === ADMIN_KEY) {
+    const secure = req.protocol === 'https' ? '; Secure' : '';
+    res.setHeader('Set-Cookie', `radm=${ADMIN_TOK}; Path=/; Max-Age=2592000; HttpOnly; SameSite=Lax${secure}`);
+    return res.redirect('/trending');
+  }
+  const admin = isAdmin(req);
   let items=[]; try{ items = await trendList(); }catch(e){ items=[]; }
-  const seen=new Set(), list=[];
-  for(const it of items){ if(it&&it.id&&!seen.has(it.id)){ seen.add(it.id); list.push(it); } }
+  let hidden=new Set(); try{ hidden = await trendHiddenSet(); }catch(e){ hidden=new Set(); }
+  const seen=new Set(), all=[];
+  for(const it of items){ if(it&&it.id&&!seen.has(it.id)){ seen.add(it.id); all.push(it); } }
+  const showHidden = admin && req.query.show === 'hidden';
+  const list = all.filter(it => showHidden ? hidden.has(it.id) : !hidden.has(it.id));
   const DOT={debunk:'#A14A38',ai:'#A14A38',verified:'#2E7D5A',photo:'#3C5E8A',scrutinize:'#8A6A2E'};
   const cards=list.slice(0,36).map(it=>{
     const dot=DOT[it.level]||'#8A6A2E';
-    return `<a class="tcard" href="${base}/check/${esc(it.id)}"><div class="tthumb" style="background-image:url('${base}/img/${esc(it.id)}')"></div><div class="tbody"><div class="tbadge"><span class="tdot" style="background:${dot}"></span>${esc(it.badge||'Checked')}</div>${it.cap?`<div class="tcap">${esc(it.cap)}</div>`:''}${it.src?`<div class="tsrc">${esc(it.src)}</div>`:''}</div></a>`;
+    const btn = admin ? `<button class="thide" data-id="${esc(it.id)}" data-act="${showHidden?'unhide':'hide'}">${showHidden?'Restore':'Hide'}</button>` : '';
+    return `<div class="tc"><a class="tcard" href="${base}/check/${esc(it.id)}"><div class="tthumb" style="background-image:url('${base}/img/${esc(it.id)}')"></div><div class="tbody"><div class="tbadge"><span class="tdot" style="background:${dot}"></span>${esc(it.badge||'Checked')}</div>${it.cap?`<div class="tcap">${esc(it.cap)}</div>`:''}${it.src?`<div class="tsrc">${esc(it.src)}</div>`:''}</div></a>${btn}</div>`;
   }).join('');
-  const body=`<div class="thead"><h1 class="th1">Trending checks</h1><p class="tsub">Images and clips circulating online, recently run through Relity. <b>Evidence, not a verdict</b> — open any report and judge for yourself.</p></div>${cards?`<div class="tgrid">${cards}</div>`:'<p class="tempty">No trending checks yet. Paste a viral post on the home page to start the board.</p>'}<a class="cta" href="${base}/" style="max-width:320px;margin:26px auto 0">Check something →</a>`;
-  res.send(page('Relity — Trending checks', body, base, null, true));
+  const hiddenCount = all.filter(it=>hidden.has(it.id)).length;
+  const adminBar = admin ? `<div class="tadmin">Owner mode · ${showHidden?`<a href="${base}/trending">← back to live board</a> · showing hidden`:`<a href="${base}/trending?show=hidden">view hidden (${hiddenCount})</a>`}</div>` : '';
+  const emptyMsg = showHidden ? 'Nothing hidden.' : 'No trending checks yet. Paste a viral post on the home page to start the board.';
+  const body=`<div class="thead"><h1 class="th1">Trending checks${showHidden?' · hidden':''}</h1><p class="tsub">Images and clips circulating online, recently run through Relity. <b>Evidence, not a verdict</b> — open any report and judge for yourself.</p>${adminBar}</div>${cards?`<div class="tgrid">${cards}</div>`:`<p class="tempty">${emptyMsg}</p>`}<a class="cta" href="${base}/" style="max-width:320px;margin:26px auto 0">Check something →</a>${admin?TREND_ADMIN_JS:''}`;
+  res.send(page(showHidden?'Relity — Hidden checks':'Relity — Trending checks', body, base, null, true));
+});
+app.post('/api/trend/hide', async (req, res) => {
+  if (!isAdmin(req)) return res.status(403).json({ error: 'not authorized' });
+  const id = String((req.body && req.body.id) || '').trim();
+  if (!/^[a-f0-9]{6,}$/.test(id)) return res.status(400).json({ error: 'bad id' });
+  await trendHide(id); res.json({ ok: true });
+});
+app.post('/api/trend/unhide', async (req, res) => {
+  if (!isAdmin(req)) return res.status(403).json({ error: 'not authorized' });
+  const id = String((req.body && req.body.id) || '').trim();
+  if (!/^[a-f0-9]{6,}$/.test(id)) return res.status(400).json({ error: 'bad id' });
+  await trendUnhide(id); res.json({ ok: true });
 });
 
 app.get('/why-ai-video-detectors-fail', (req, res) => {
@@ -730,7 +792,7 @@ app.get('/check/:id', async (req, res) => {
       const interp = interpretDomains(r.reverse.domains);
       const vintage = vintageYear(e);
       const st = interp.examined ? 'st-caution' : (interp.flag === 'ai' ? 'st-ai' : 'st-signal');
-      web += `<div class="row"><div><div class="n">Where it appears</div><div class="rd">Where this image appears across the web.${interp.found?' '+esc(interp.text):''}<br><span class="dim">${r.reverse.count?`Seen across ${spreadPhrase(r.reverse.count)} online.`:'Not found on other public sites we could check.'}${doms?` Found across multiple sources: ${doms}${(r.reverse.count||0)>4?' …and more':''}.`:''}${e?` Earliest dated copy: ${esc(e.source||'')} (${esc(e.date||'')})${vintage?` · online since ${vintage}`:''}.`:''}</span></div></div><span class="st ${st}">${(r.reverse.count||0)>0?'Found':'Checked'}</span></div>`;
+      web += `<div class="row"><div><div class="n">Where it appears</div><div class="rd">Where this image appears across the web.${interp.found?' '+esc(interp.text):''}<br><span class="dim">${r.reverse.count?`Seen across ${spreadPhrase(r.reverse.count)} online.`:(interp.found?'':'Not found on other public sites we could check.')}${doms?` Found across multiple sources: ${doms}${(r.reverse.count||0)>4?' …and more':''}.`:''}${e?` Earliest dated copy: ${esc(e.source||'')} (${esc(e.date||'')})${vintage?` · online since ${vintage}`:''}.`:''}</span></div></div><span class="st ${st}">${(r.reverse.count||0)>0?'Found':'Checked'}</span></div>`;
     }
   }
   if (r.fact?.connected) {
@@ -898,6 +960,12 @@ function page(title, body, base, og, wide) {
     .tcap{color:var(--g);font-size:12.5px;line-height:1.45;margin-top:6px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
     .tsrc{color:#8A95A4;font-size:11.5px;margin-top:7px;font-family:ui-monospace,monospace}
     .tempty{color:var(--g);font-size:15px;text-align:center;padding:46px 0}
+    .tc{position:relative;display:flex}
+    .tc>.tcard{flex:1}
+    .thide{position:absolute;top:8px;right:8px;z-index:2;font-family:'Space Grotesk',system-ui,sans-serif;font-size:11.5px;font-weight:600;color:#fff;background:rgba(20,24,31,.72);border:1px solid rgba(255,255,255,.18);border-radius:8px;padding:4px 9px;cursor:pointer;-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);transition:background .12s ease}
+    .thide:hover{background:rgba(161,74,56,.94)}
+    .tadmin{margin-top:11px;font-family:ui-monospace,monospace;font-size:12px;color:var(--g)}
+    .tadmin a{color:var(--signal);text-decoration:none}
     .article{max-width:680px;margin:0 auto;padding:6px 0 44px}
     .article-back{display:inline-block;color:var(--signal);text-decoration:none;font-family:'Space Grotesk',system-ui,sans-serif;font-weight:600;font-size:13px;letter-spacing:.04em;margin-bottom:18px}
     .article-h1{font-family:'Space Grotesk',system-ui,sans-serif;font-weight:700;font-size:31px;line-height:1.15;letter-spacing:-.02em;margin:0 0 8px;color:var(--ink)}

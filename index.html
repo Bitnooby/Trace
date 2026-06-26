@@ -689,7 +689,7 @@ async function publishToServer(file,hash,localFindings,readObj,sig,claim){
     reachFlag = interp.flag; examined = interp.examined; vintage = vintageYear(e);
     setRow('r-reverse',{ic: examined?'caution':(reachFlag==='ai'?'ai':'signal'),state:['signal',count>0?'Found':'Checked'],
       read:'Where this image appears across the web.'+(interp.found?' '+interp.text:''),
-      data:(count?`Seen across ${spreadPhrase(count)} online.`:`Not found on other public sites we could check.`)+(doms?`\nFound across multiple sources: ${doms}${count>4?' …and more':''}.`:'')+(e?`\nEarliest dated copy: ${e.source||''} ${e.date||''}`+(vintage?`  ·  online since ${vintage}`:''):'')});
+      data:(count?`Seen across ${spreadPhrase(count)} online.`:(interp.found?'':`Not found on other public sites we could check.`))+(doms?`\nFound across multiple sources: ${doms}${count>4?' …and more':''}.`:'')+(e?`\nEarliest dated copy: ${e.source||''} ${e.date||''}`+(vintage?`  ·  online since ${vintage}`:''):'')});
     setWebMeter(Math.min(3,(count?2:1)),'Checked');
     /* per-post source links removed by request — plain platform list only (set above via data) */
   } else {
