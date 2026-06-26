@@ -621,7 +621,7 @@ app.get('/check/:id', async (req, res) => {
 
   let aiBlock;
   if (r.aiRead && r.aiRead.text) {
-    const t = esc(r.aiRead.text).replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>').replace(/^#{1,6}\s*(.+)$/gm, '<div class="aih">$1</div>').replace(/\n{2,}/g, '</p><p>').replace(/\n/g, '<br>');
+    const t = esc(r.aiRead.text).replace(/^(Claude|Gemini)\s*—\s*$/gm, '</p><div class="ai-model">$1</div><p>').replace(/^READ:\s*([^\n·•]+?)\s*[·•]\s*(\d{1,3})\s*%\s*$/gmi, '</p><div class="ai-chip">$1 · $2%</div><p>').replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>').replace(/^#{1,6}\s*(.+)$/gm, '<div class="aih">$1</div>').replace(/\n{2,}/g, '</p><p>').replace(/\n/g, '<br>');
     aiBlock = `<div class="card"><div class="sec">AI vision read — the closest look at the media</div><div class="airead"><p>${t}</p><div class="aimeta">AI vision · ${esc(r.aiRead.model || r.aiRead.provider || '')} — one model’s read, weighed with the evidence.  <span class="st st-ai">${esc(r.aiRead.tierLabel || 'AI')}</span></div></div></div>`;
   } else {
     aiBlock = `<div class="card"><div class="sec">AI vision read</div><div class="airead"><p>The vision model didn’t return a read for this frame this time — the other signals still stand. Re-run the check to try the AI read again.</p></div></div>`;
@@ -751,6 +751,8 @@ function page(title, body, base, og, wide) {
     .airead p{margin:0 0 10px;color:var(--g)}
     .airead .aih{font-weight:700;color:var(--ink);font-size:13px;margin:15px 0 5px}
     .airead .aimeta{margin-top:12px;font-size:11.5px;color:#8A95A4;border-top:1px solid var(--line);padding-top:10px}
+    .ai-model{font-weight:700;font-size:13.5px;color:var(--ink);margin:16px 0 0}
+    .ai-chip{display:inline-block;font-family:ui-monospace,monospace;font-size:11.5px;font-weight:600;background:#EDEBFA;color:#5B4BC4;border-radius:20px;padding:4px 11px;margin:5px 0 7px;letter-spacing:.02em}
     .cta-ghost{background:#fff;color:var(--ink);border:1px solid var(--line)}
     .rpt-foot{max-width:620px;margin:6px auto 0}
     @media(min-width:920px){

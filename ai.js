@@ -12,7 +12,7 @@ module.exports = function ai({ redisOn, redisCmd } = {}) {
     'garbled, melted, or nonsensical text on signs, labels, or clothing; impossible anatomy, scale, or physics; ' +
     'inconsistent shadows, reflections, or lighting directions; objects that warp, melt, blur, or merge into each other; ' +
     'unnaturally smooth "plastic" or waxy skin; repeated or nonsensical background patterns; and warped, haloed, or smeared edges. ' +
-    'Reply in 3-4 short, plain sentences: ' +
+    'Start your reply with ONE summary line in this EXACT format (no quotes; keep the middle dot ·): READ: <label> · <N>% — where <label> is exactly one of [Likely authentic, Possibly edited, Likely AI-generated, Inconclusive] and <N> is your confidence (0-100) in that label. It is your single-signal read, never a final verdict. Then reply in 3-4 short, plain sentences: ' +
     '(1) what the image appears to show; ' +
     '(2) ANY anomalies or physically impossible details you can actually see — name them specifically and where they are — or state plainly that you see no obvious anomalies; ' +
     (caption ? '(3) whether it plausibly matches this caption: "' + caption + '"; ' : '(3) whether anything looks internally inconsistent; ') +

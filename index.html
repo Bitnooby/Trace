@@ -770,7 +770,7 @@ function renderLinkRead(p){
   var where = p.platform ? '<div class="tip" style="margin:0 0 8px;opacity:.85">Posted on <b>'+esc(p.platform)+'</b></div>' : '';
   var capTxt = (p.caption && (p.caption.title||p.caption.description)) ? '“'+esc(p.caption.title||p.caption.description)+'”'+(p.caption.source?' — '+esc(p.caption.source):'') : '';
   var body='';
-  if(p.cc && p.cc.read){ body = '<div class="sec" style="margin-bottom:6px">The poster’s claim — checked</div>' + claimBanner(p.cc.read) + sourceList(p.cc.sources); }
+  if(p.cc && p.cc.read){ var _cr=Object.assign({},p.cc.read,{eyebrow:'The poster’s claim — checked'}); body = claimBanner(_cr) + sourceList(p.cc.sources); }
   else if(p.checking){ body = '<div class="sec" style="margin-bottom:6px">The poster’s claim</div>' + (capTxt?'<div class="card" style="margin-bottom:8px"><div class="row-read">'+capTxt+'</div></div>':'') + '<p class="tip">Checking the claim against the evidence…</p>'; }
   else if(p.blocked){ body = '<div class="read-banner r-amber" style="border-radius:13px"><div class="rb-eyebrow">Couldn’t read this link</div><div class="rb-badge"><span class="dotb"></span>Use the file or the extension</div><div class="rb-line">'+esc(p.note||'')+'</div></div>'; }
   var note = (p.note && !p.blocked) ? '<p class="tip" style="margin-top:8px">'+esc(p.note)+'</p>' : '';
