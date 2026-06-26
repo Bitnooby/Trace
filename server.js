@@ -576,7 +576,7 @@ function computeConsensus(prov, reach, debunked, count, examined, vintage, misma
   const r=(level,badge,line)=>({eyebrow:E,level,badge,line:(level==='debunk'||level==='ai')?line:line+vint});
   if(debunked){
     const dbadge = aiConcern==='ai' ? 'Fabricated — likely AI' : aiConcern==='real' ? 'Possibly miscaptioned footage' : 'Fact-checked false';
-    const dwhy = aiConcern==='ai' ? 'fact-checkers flagged it and the closest look sees AI or manipulation tells — most likely fabricated.' : aiConcern==='real' ? 'fact-checkers flagged it, yet the closest look reads the footage itself as real — so this is most likely real footage paired with a false or recycled caption. The underlying event may well be real; the image is being misused.' : 'fact-checkers rated the claim false or misleading. A "false" rating often means real footage with a false caption — read their finding to see exactly what was checked.';
+    const dwhy = aiConcern==='ai' ? 'and the closest look sees AI or manipulation tells — most likely fabricated.' : aiConcern==='real' ? 'yet the closest look reads the footage itself as real, so this is most likely real footage paired with a false or recycled caption. The underlying event may well be real; the image is being misused.' : 'and rated the claim false or misleading. A "false" rating often means real footage with a false caption — read their finding to see exactly what was checked.';
     return r('debunk',dbadge,`Fact-checkers have addressed this image${places} — ${dwhy} Read their finding below.`);
   }
   if(prov==='ai-cred') return r('ai','AI-generated','Its Content Credential declares it AI-generated — a strong, embedded signal'+(reach==='ai'?', and it lives on AI-image sites too. Everything lines up.':'.'));
