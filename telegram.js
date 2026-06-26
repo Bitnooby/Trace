@@ -153,8 +153,32 @@ module.exports = function telegram({ claims, ai, img, video, news, redisOn, redi
     } catch (e) { console.error('telegram checkVideoMessage:', e.message); await send(chatId, '⚠️ Something went wrong checking that video. Try a shorter clip, or use ' + BASE + '.'); }
   }
 
+  async function handleInline(q) {
+    try {
+      const query = (q.query || '').trim();
+      const ans = (results, cache) => api('answerInlineQuery', { inline_query_id: q.id, cache_time: cache || 60, results });
+      if (query.length < 8) {
+        await ans([{ type: 'article', id: 'hint', title: 'Type a claim, headline, or question…', description: 'Relity shows a quick read — evidence, not a verdict.', input_message_content: { message_text: '🔎 Check claims, posts, images and video with @RelityCheck_bot — evidence, not verdicts.', parse_mode: 'HTML', disable_web_page_preview: true } }], 10);
+        return;
+      }
+      let cls = null;
+      try { cls = (ai && ai.analyzeClaim) ? await ai.analyzeClaim({ tier: 'free', text: query }) : null; } catch (e) {}
+      let head = 'Checkable claim', line = '';
+      if (cls) {
+        if (cls.kind === 'opinion') { head = 'Reads as opinion'; line = cls.opinion || 'Not a checkable factual claim.'; }
+        else if (cls.kind === 'question') { head = 'A question'; line = cls.answer || ''; }
+        else if (cls.knownStatus === 'contradicted') { head = '⚠️ Contradicts well-established facts'; line = cls.correction || cls.note || ''; }
+        else if (cls.knownStatus === 'supported') { head = 'Consistent with known facts'; line = cls.note || cls.answer || ''; }
+        else { head = 'Checkable claim'; line = cls.note || ''; }
+      }
+      const id = crypto.createHash('sha256').update(query).digest('hex').slice(0, 32);
+      const msg = '🔎 <b>Relity</b> on: <i>' + esc(query) + '</i>\n\n<b>' + esc(head) + '</b>' + (line ? '\n' + esc(line) : '') + '\n\n<i>Quick read — for sources, fact-checks and an AI media check, send it to</i> @RelityCheck_bot';
+      await ans([{ type: 'article', id, title: head, description: (line || 'Tap to share this read').slice(0, 120), input_message_content: { message_text: msg, parse_mode: 'HTML', disable_web_page_preview: true } }], 120);
+    } catch (e) { console.error('telegram inline:', e.message); }
+  }
   async function handle(update) {
     try {
+      if (update.inline_query) { await handleInline(update.inline_query); return; }
       const m = update.message || update.edited_message;
       if (!m || !m.chat) return;
       const chatId = m.chat.id;
@@ -210,7 +234,7 @@ module.exports = function telegram({ claims, ai, img, video, news, redisOn, redi
   async function register() {
     if (!on) return;
     try {
-      const j = await api('setWebhook', { url: BASE + '/webhook/telegram', secret_token: hookSecret, allowed_updates: ['message'] });
+      const j = await api('setWebhook', { url: BASE + '/webhook/telegram', secret_token: hookSecret, allowed_updates: ['message', 'inline_query'] });
       console.log('telegram setWebhook:', j && j.ok ? 'ok @ ' + BASE + '/webhook/telegram' : JSON.stringify(j).slice(0, 160));
       await api('setMyCommands', { commands: [
         { command: 'start', description: 'What Relity does and how to use it' },
