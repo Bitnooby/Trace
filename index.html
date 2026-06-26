@@ -757,7 +757,7 @@ async function checkLink(){
       var ok=false;
       try{
         var ir=await fetch(base+'/api/proxy-image?url='+encodeURIComponent(j.mediaUrl));
-        if(ir.ok){ var blob=await ir.blob(); if(blob.type && blob.type.indexOf('image/')===0){ ok=true; handleFile(new File([blob],'from-link',{type:blob.type}), j.caption||null); } }
+        if(ir.ok){ var blob=await ir.blob(); if(blob.type && blob.type.indexOf('image/')===0){ ok=true; var _cap=j.caption||null; if(_cap && j.captionCheck && j.captionCheck.read){ _cap.verdict={badge:j.captionCheck.read.badge,line:j.captionCheck.read.line,level:j.captionCheck.read.level}; } handleFile(new File([blob],'from-link',{type:blob.type}), _cap); } }
       }catch(_){}
       if(!ok){ pendingLinkRead=null; if(out) out.innerHTML=renderLinkRead({cc:j.captionCheck, platform:j.platform, note:j.note, blocked:!j.captionCheck}); }
     } else {

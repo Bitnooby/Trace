@@ -260,6 +260,7 @@ app.post('/api/publish', upload.single('image'), async (req, res) => {
       const recent = claimImpliesRecent(`${claim.title || ''} ${claim.description || ''}`);
       const mismatch = (recent && vy) ? { is: true, year: vy } : { is: false };
       claimOut = { title: claim.title || '', description: claim.description || '', source: claim.source || '', mismatch };
+      if (claim.verdict && claim.verdict.line) claimOut.verdict = { badge: String(claim.verdict.badge || '').slice(0, 60), line: String(claim.verdict.line || '').slice(0, 400), level: claim.verdict.level || '' };
     }
 
     const report = { id, sha256: sha, createdAt: Date.now(), findings, read, reverse, reverseCached, fact, aiRead, prov: (req.body.prov || null), claim: claimOut, hasImage: !!req.file };
@@ -586,7 +587,11 @@ app.get('/check/:id', async (req, res) => {
   if (r.claim && (r.claim.title || r.claim.description)) {
     const cl = r.claim, mm = cl.mismatch || {};
     const txt = esc('“'+(cl.title||cl.description)+'”'+(cl.source?'  — '+cl.source:''));
-    if (mm.is) {
+    if (cl.verdict && cl.verdict.line) {
+      const vlvl = cl.verdict.level;
+      const vst = vlvl === 'debunk' ? 'st-caution' : (vlvl === 'photo' || vlvl === 'verified') ? 'st-present' : 'st-signal';
+      web += `<div class="row"><div><div class="n">The poster’s claim — checked</div><div class="rd">${esc(cl.verdict.line)}<br><span class="dim">${txt}</span></div></div><span class="st ${vst}">${esc(cl.verdict.badge || 'Checked')}</span></div>`;
+    } else if (mm.is) {
       web += `<div class="row"><div><div class="n">The claim</div><div class="rd">This claim presents the image as current, but the image has been online since ${mm.year} — a classic recontextualization (old image, new caption). Check what it originally showed.<br><span class="dim">${txt}</span></div></div><span class="st st-caution">Mismatch</span></div>`;
     } else {
       web += `<div class="row"><div><div class="n">The claim</div><div class="rd">The headline or caption wrapped around this image, weighed against the fact-check record and the image’s age. Whether the photo truly depicts it is your call.<br><span class="dim">${txt}</span></div></div><span class="st st-present">Recorded</span></div>`;
@@ -616,6 +621,8 @@ app.get('/check/:id', async (req, res) => {
 
   if (r.aiRead && r.aiRead.text) {
     web += `<div class="row"><div><div class="n">AI vision read</div><div class="rd" style="white-space:pre-line">${esc(r.aiRead.text)}<br><span class="dim">AI vision · ${esc(r.aiRead.model || r.aiRead.provider || '')} — one model’s read, weighed with the evidence.</span></div></div><span class="st st-ai">${esc(r.aiRead.tierLabel || 'AI')}</span></div>`;
+  } else {
+    web += `<div class="row"><div><div class="n">AI vision read</div><div class="rd">The vision model didn’t return a read for this frame this time — the other signals above still stand. <span class="dim">Re-run the check to try the AI read again.</span></div></div><span class="st st-present">No read this time</span></div>`;
   }
 
   // CONSENSUS — weigh provenance + where-it-appears + fact-check into one honest read
@@ -697,7 +704,7 @@ function page(title, body, base, og) {
     .brand{display:flex;align-items:center;gap:9px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;font-size:15px;color:var(--signal)}
     .g{width:22px;height:22px;border-radius:6px;background:linear-gradient(150deg,#0B6E6E,#13A8A8);display:inline-flex;align-items:center;justify-content:center;vertical-align:middle}
     .g svg{width:15px;height:15px}
-    .hero{width:100%;border-radius:14px;margin:18px 0;border:1px solid var(--line)}
+    .hero{display:block;width:100%;max-height:440px;object-fit:contain;background:#eef2f6;border-radius:14px;margin:18px 0;border:1px solid var(--line)}
     .rb{border-radius:13px;padding:16px 18px;margin:14px 0 14px}
     .rb-eye{font-family:'Space Grotesk',system-ui,sans-serif;font-weight:600;font-size:10px;letter-spacing:.1em;text-transform:uppercase;opacity:.6;margin-bottom:6px}
     .rb-b{font-weight:700;font-size:18px;display:flex;align-items:center;gap:9px}
