@@ -24,7 +24,7 @@ const NEWS=['reuters','apnews','bbc.','nytimes','washingtonpost','theguardian','
 const FC=['snopes','politifact','factcheck','fullfact','leadstories','checkyourfact','altnews','boomlive','factly','africacheck','newschecker'];
 const SOCIAL=['x.com','twitter','facebook','instagram','tiktok','reddit','youtube','youtu.be','threads.net','t.me','telegram'];
 
-module.exports = function video({ SERPAPI_KEY = '', putImage, ai } = {}) {
+module.exports = function video({ SERPAPI_KEY = '', putImage, ai, serpTry = null } = {}) {
 
   function run(bin, args) {
     return new Promise((res, rej) => {
@@ -66,6 +66,7 @@ module.exports = function video({ SERPAPI_KEY = '', putImage, ai } = {}) {
   const hostOf = l => { try { return new URL(l).hostname.replace(/^www\./, ''); } catch { return ''; } };
   async function reverseSearch(url) {
     if (!SERPAPI_KEY) return { connected: false };
+    if (serpTry && !(await serpTry())) return { connected: true, degraded: true };
     try {
       const j = await (await fetch(`https://serpapi.com/search.json?engine=google_lens&url=${encodeURIComponent(url)}&api_key=${SERPAPI_KEY}`)).json();
       if (j.error) return { connected: true, degraded: true };

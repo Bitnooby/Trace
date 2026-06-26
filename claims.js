@@ -20,7 +20,7 @@ const SOCIAL = ['x.com','twitter','facebook','instagram','tiktok','reddit','yout
 const AUTH = ['.gov','.edu','.ac.','wikipedia.','britannica.','nature.com','science.org','sciencemag','scientificamerican','nationalgeographic','smithsonian','who.int','un.org','nih.','noaa.','nasa.','usgs.','esa.int','europa.eu','jstor.','pnas.'];
 const LOCAL = ['patch.com','localnews','spectrumlocalnews','spectrumnews','clickorlando','azfamily','localmemphis','wral','wsoctv','wsbtv','wftv','11alive','kxan','kvue','ktla','kcra','king5','wcvb','wbz','ksl.com','abc7','abc11','abc13','abc30','fox5','fox13','fox32','nbc4','cbs2','cbsla','nbcchicago','gazette','tribune','herald','dispatch','courier','sentinel','chronicle','star-','dailynews'];
 
-module.exports = function claims({ SERPAPI_KEY = '', FACTCHECK_KEY = '', ai = null, tierOf = null } = {}) {
+module.exports = function claims({ SERPAPI_KEY = '', FACTCHECK_KEY = '', ai = null, tierOf = null, serpTry = null } = {}) {
   const fetchT = (url, opts, ms) => { const cc = new AbortController(); const t = setTimeout(() => cc.abort(), ms || 12000); return fetch(url, Object.assign({}, opts || {}, { signal: cc.signal })).finally(() => clearTimeout(t)); };
 
   async function factCheck(q) {
@@ -39,6 +39,7 @@ module.exports = function claims({ SERPAPI_KEY = '', FACTCHECK_KEY = '', ai = nu
 
   async function webSearch(q) {
     if (!SERPAPI_KEY) return { connected: false };
+    if (serpTry && !(await serpTry())) return { connected: true, degraded: true };
     try {
       const u = `https://serpapi.com/search.json?engine=google&q=${encodeURIComponent(q)}&num=10&api_key=${SERPAPI_KEY}`;
       const j = await (await fetchT(u)).json();

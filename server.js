@@ -32,6 +32,7 @@ const app  = express();
 app.set('trust proxy', true);                  // Render sits behind a proxy → makes req.protocol return https
 const PORT  = process.env.PORT || 8080;
 const SERPAPI_KEY   = process.env.SERPAPI_KEY   || '';   // serpapi.com — Google Lens engine
+const SERP_DAILY_MAX = Number.isFinite(+process.env.SERP_DAILY_MAX) ? +process.env.SERP_DAILY_MAX : 500;  // site-wide paid web-checks (Lens + search) per day; 0 = unlimited
 const FACTCHECK_KEY = process.env.FACTCHECK_KEY || '';   // Google Fact Check Tools API
 const REDIS_URL     = process.env.UPSTASH_REDIS_REST_URL   || '';  // Upstash Redis (REST) — keeps shared reports alive across deploys
 const REDIS_TOKEN   = process.env.UPSTASH_REDIS_REST_TOKEN || '';
@@ -132,11 +133,34 @@ async function quotaInc(id) {
   if (redisOn) { try { const n = await redisCmd(['INCR', k]); if (n === 1) await redisCmd(['EXPIRE', k, 172800]); return n; } catch { /* fall back */ } }
   const rec = memQuota.get(k) || { count: 0 }; rec.count++; memQuota.set(k, rec); return rec.count;
 }
+// ---- site-wide daily cost ceiling on paid SerpAPI calls (Lens + web search) ----
+let memSerp = { day: '', n: 0 };
+async function serpBump() {
+  const key = `relity:serpday:${today()}`;
+  if (redisOn) { try { const n = await redisCmd(['INCR', key]); if (n === 1) await redisCmd(['EXPIRE', key, 172800]); return n; } catch { /* fall back */ } }
+  const t = today(); if (memSerp.day !== t) memSerp = { day: t, n: 0 }; memSerp.n++; return memSerp.n;
+}
+async function serpUnbump() {
+  const key = `relity:serpday:${today()}`;
+  if (redisOn) { try { await redisCmd(['DECR', key]); return; } catch { /* fall back */ } }
+  if (memSerp.day === today() && memSerp.n > 0) memSerp.n--;
+}
+async function serpTry() {
+  if (!SERP_DAILY_MAX) return true;            // 0 = unlimited
+  const n = await serpBump();                  // reserve one
+  if (n > SERP_DAILY_MAX) { await serpUnbump(); return false; }
+  return true;
+}
+async function serpUsed() {
+  const key = `relity:serpday:${today()}`;
+  if (redisOn) { try { return +(await redisCmd(['GET', key])) || 0; } catch { /* fall back */ } }
+  return memSerp.day === today() ? memSerp.n : 0;
+}
 
 const billing = require('./billing')({ redisOn, redisCmd, readCookie });
 const ai      = require('./ai')({ redisOn, redisCmd });
-const claims  = require('./claims')({ SERPAPI_KEY, FACTCHECK_KEY, ai, tierOf: billing.tierOf });
-const video   = require('./video')({ SERPAPI_KEY, putImage, ai });
+const claims  = require('./claims')({ SERPAPI_KEY, FACTCHECK_KEY, ai, tierOf: billing.tierOf, serpTry });
+const video   = require('./video')({ SERPAPI_KEY, putImage, ai, serpTry });
 async function meteredGate(name, req, res, next) {
   if (!(await allow(name, clientIp(req), RL_PUBLISH.max, RL_PUBLISH.win)))
     return res.status(429).json({ error: 'Too many checks right now — give it a moment.' });
@@ -160,6 +184,7 @@ async function reverseSearch(publicImageUrl) {
   if (!SERPAPI_KEY) return { connected: false, note: 'Reverse search not configured (set SERPAPI_KEY).' };
   // an honest "we couldn't check" — NOT the same as "appears nowhere", and must never feed a real signal to consensus
   const DEGRADED = { connected: true, degraded: true, note: 'The web-appearance check couldn’t run for this image (search quota or service hiccup).' };
+  if (!(await serpTry())) return { connected: true, degraded: true, capped: true, note: 'The site-wide daily web-check budget has been reached — live web cross-checks resume tomorrow. Your file checks still ran.' };
   try {
     const u = `https://serpapi.com/search.json?engine=google_lens&url=${encodeURIComponent(publicImageUrl)}&api_key=${SERPAPI_KEY}`;
     const r = await fetch(u);
@@ -681,10 +706,12 @@ app.get('/trending', async (req, res) => {
   const cards=list.slice(0,36).map(it=>{
     const dot=DOT[it.level]||'#8A6A2E';
     const btn = admin ? `<button class="thide" data-id="${esc(it.id)}" data-act="${showHidden?'unhide':'hide'}">${showHidden?'Restore':'Hide'}</button>` : '';
-    return `<div class="tc"><a class="tcard" href="${base}/check/${esc(it.id)}"><div class="tthumb" style="background-image:url('${base}/img/${esc(it.id)}')"></div><div class="tbody"><div class="tbadge"><span class="tdot" style="background:${dot}"></span>${esc(it.badge||'Checked')}</div>${it.cap?`<div class="tcap">${esc(it.cap)}</div>`:''}${it.src?`<div class="tsrc">${esc(it.src)}</div>`:''}</div></a>${btn}</div>`;
+    return `<div class="tc"><a class="tcard" href="${base}/check/${esc(it.id)}"><div class="tthumb"><img class="ti" src="${base}/img/${esc(it.id)}" alt="" loading="lazy" onerror="this.style.display='none'"></div><div class="tbody"><div class="tbadge"><span class="tdot" style="background:${dot}"></span>${esc(it.badge||'Checked')}</div>${it.cap?`<div class="tcap">${esc(it.cap)}</div>`:''}${it.src?`<div class="tsrc">${esc(it.src)}</div>`:''}</div></a>${btn}</div>`;
   }).join('');
   const hiddenCount = all.filter(it=>hidden.has(it.id)).length;
-  const adminBar = admin ? `<div class="tadmin">Owner mode · ${showHidden?`<a href="${base}/trending">← back to live board</a> · showing hidden`:`<a href="${base}/trending?show=hidden">view hidden (${hiddenCount})</a>`}</div>` : '';
+  const used = admin ? await serpUsed() : 0;
+  const cap = SERP_DAILY_MAX ? String(SERP_DAILY_MAX) : '∞';
+  const adminBar = admin ? `<div class="tadmin">Owner mode · ${used}/${cap} web-checks today · ${showHidden?`<a href="${base}/trending">← back to live board</a> · showing hidden`:`<a href="${base}/trending?show=hidden">view hidden (${hiddenCount})</a>`}</div>` : '';
   const emptyMsg = showHidden ? 'Nothing hidden.' : 'No trending checks yet. Paste a viral post on the home page to start the board.';
   const body=`<div class="thead"><h1 class="th1">Trending checks${showHidden?' · hidden':''}</h1><p class="tsub">Images and clips circulating online, recently run through Relity. <b>Evidence, not a verdict</b> — open any report and judge for yourself.</p>${adminBar}</div>${cards?`<div class="tgrid">${cards}</div>`:`<p class="tempty">${emptyMsg}</p>`}<a class="cta" href="${base}/" style="max-width:320px;margin:26px auto 0">Check something →</a>${admin?TREND_ADMIN_JS:''}`;
   res.send(page(showHidden?'Relity — Hidden checks':'Relity — Trending checks', body, base, null, true));
@@ -953,7 +980,9 @@ function page(title, body, base, og, wide) {
     .tgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px;margin-top:8px}
     .tcard{display:flex;flex-direction:column;background:#fff;border:1px solid var(--line);border-radius:14px;overflow:hidden;text-decoration:none;color:inherit;box-shadow:var(--shadow);transition:transform .12s ease}
     .tcard:hover{transform:translateY(-2px)}
-    .tthumb{width:100%;aspect-ratio:16/10;background:#0d1117 center/cover no-repeat;border-bottom:1px solid var(--line)}
+    .tthumb{position:relative;width:100%;aspect-ratio:16/10;background:#0d1117;border-bottom:1px solid var(--line);overflow:hidden}
+    .tthumb::before{content:'RELITY';position:absolute;inset:0;z-index:0;display:flex;align-items:center;justify-content:center;font-family:'Space Grotesk',system-ui,sans-serif;font-weight:700;font-size:15px;letter-spacing:.22em;color:rgba(255,255,255,.16)}
+    .tthumb .ti{position:relative;z-index:1;width:100%;height:100%;object-fit:cover;display:block}
     .tbody{padding:12px 13px}
     .tbadge{display:flex;align-items:center;gap:7px;font-family:'Space Grotesk',system-ui,sans-serif;font-weight:600;font-size:13px;color:var(--ink)}
     .tdot{width:9px;height:9px;border-radius:50%;flex:0 0 auto}
