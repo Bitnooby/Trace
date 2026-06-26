@@ -713,7 +713,7 @@ app.get('/trending', async (req, res) => {
   const cap = SERP_DAILY_MAX ? String(SERP_DAILY_MAX) : '∞';
   const adminBar = admin ? `<div class="tadmin">Owner mode · ${used}/${cap} web-checks today · ${showHidden?`<a href="${base}/trending">← back to live board</a> · showing hidden`:`<a href="${base}/trending?show=hidden">view hidden (${hiddenCount})</a>`}</div>` : '';
   const emptyMsg = showHidden ? 'Nothing hidden.' : 'No trending checks yet. Paste a viral post on the home page to start the board.';
-  const body=`<div class="thead"><h1 class="th1">Trending checks${showHidden?' · hidden':''}</h1><p class="tsub">Images and clips circulating online, recently run through Relity. <b>Evidence, not a verdict</b> — open any report and judge for yourself.</p>${adminBar}</div>${cards?`<div class="tgrid">${cards}</div>`:`<p class="tempty">${emptyMsg}</p>`}<a class="cta" href="${base}/" style="max-width:320px;margin:26px auto 0">Check something →</a>${admin?TREND_ADMIN_JS:''}`;
+  const body=`<div class="thead"><h1 class="th1">Trending checks${showHidden?' · hidden':''}</h1><p class="tsub">Images and clips circulating online, recently run through Relity. <b>Evidence, not a verdict</b> — open any report and judge for yourself. <a href="${base}/radar" style="color:var(--signal);font-weight:600;text-decoration:none">Radar →</a></p>${adminBar}</div>${cards?`<div class="tgrid">${cards}</div>`:`<p class="tempty">${emptyMsg}</p>`}<a class="cta" href="${base}/" style="max-width:320px;margin:26px auto 0">Check something →</a>${admin?TREND_ADMIN_JS:''}`;
   res.send(page(showHidden?'Relity — Hidden checks':'Relity — Trending checks', body, base, null, true));
 });
 app.post('/api/trend/hide', async (req, res) => {
@@ -727,6 +727,46 @@ app.post('/api/trend/unhide', async (req, res) => {
   const id = String((req.body && req.body.id) || '').trim();
   if (!/^[a-f0-9]{6,}$/.test(id)) return res.status(400).json({ error: 'bad id' });
   await trendUnhide(id); res.json({ ok: true });
+});
+
+app.get('/radar', async (req, res) => {
+  const base = `${req.protocol}://${req.get('host')}`;
+  const esc = t => (t == null ? '' : String(t)).replace(/[<>&"]/g, c => ({ '<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;' }[c]));
+  let items=[]; try{ items = await trendList(); }catch(e){ items=[]; }
+  let hidden=new Set(); try{ hidden = await trendHiddenSet(); }catch(e){ hidden=new Set(); }
+  const seen=new Set(), list=[];
+  for(const it of items){ if(it&&it.id&&!seen.has(it.id)&&!hidden.has(it.id)){ seen.add(it.id); list.push(it); } }
+  const bucketOf = e => {
+    const b=(e.badge||'').toLowerCase(), lv=e.level||'';
+    if(/fabricat|synthetic/.test(b) || (b.includes('ai') && !b.includes('edited'))) return 'ai';
+    if(b.includes('miscaption')||b.includes('recontextual')) return 'miscap';
+    if(b.includes('fact-check')) return 'flagged';
+    if(lv==='photo'||lv==='verified'||b.includes('authentic')||b.includes('leans real')||b.includes('origin')) return 'real';
+    return 'unverified';
+  };
+  const BK=[
+    {k:'ai',label:'Likely AI / fabricated',dot:'#A14A38',blurb:'Generated or manipulated media.'},
+    {k:'flagged',label:'Fact-checked false',dot:'#B5552F',blurb:'Already addressed by fact-checkers.'},
+    {k:'miscap',label:'Miscaptioned footage',dot:'#8A6A2E',blurb:'Real media, false or recycled caption.'},
+    {k:'unverified',label:'Unverified',dot:'#8A95A4',blurb:'Not enough signal to lean either way.'},
+    {k:'real',label:'Leaning real',dot:'#2E7D5A',blurb:'Authentic-capture signals; no manipulation tells found.'}
+  ];
+  const groups={}; BK.forEach(b=>groups[b.k]=[]);
+  list.forEach(e=>{ const k=bucketOf(e); (groups[k]||groups.unverified).push(e); });
+  const total=list.length;
+  const ats=list.map(e=>+e.at||0).filter(Boolean);
+  const oldest=ats.length?Math.min.apply(null,ats):0;
+  const days=oldest?Math.max(1,Math.round((Date.now()-oldest)/86400000)):0;
+  const span=!total?'':days<=1?'in the last day':`over the past ${days} days`;
+  const srcCount={}; list.forEach(e=>{ const s=(e.src||'').trim(); if(s) srcCount[s]=(srcCount[s]||0)+1; });
+  const topSrc=Object.entries(srcCount).sort((a,b)=>b[1]-a[1]).slice(0,4);
+  const bar=total?BK.map(b=>{ const n=groups[b.k].length; return n?`<div class="rad-seg" style="flex:${n};background:${b.dot}" title="${esc(b.label)}: ${n}"></div>`:''; }).join(''):'';
+  const legend=BK.map(b=>{ const n=groups[b.k].length; const pct=total?Math.round(n/total*100):0; return `<div class="rl-tile"><span class="rl-dot" style="background:${b.dot}"></span><div><div class="rl-n">${n}<span class="rl-pct"> · ${pct}%</span></div><div class="rl-l">${esc(b.label)}</div></div></div>`; }).join('');
+  const sections=BK.map(b=>{ const arr=groups[b.k]; if(!arr.length) return ''; const rows=arr.slice(0,5).map(e=>`<a class="rad-item" href="${base}/check/${esc(e.id)}"><span class="rad-idot" style="background:${b.dot}"></span><span class="rad-cap">${esc(e.cap||'(no caption)')}</span>${e.src?`<span class="rad-src">${esc(e.src)}</span>`:''}</a>`).join(''); return `<section class="rad-sec"><div class="rad-sec-h"><span class="rl-dot" style="background:${b.dot}"></span>${esc(b.label)}<span class="rad-sec-n">${arr.length}</span></div><div class="rad-sec-blurb">${esc(b.blurb)}</div>${rows}</section>`; }).join('');
+  const srcLine=topSrc.length?`<div class="rad-sources"><span class="rad-sources-h">Most-cited sources</span> ${topSrc.map(s=>`${esc(s[0])} <span class="rad-sc-n">(${s[1]})</span>`).join(' · ')}</div>`:'';
+  const og=`\n    <meta property="og:title" content="Relity Radar — what's circulating right now" />\n    <meta property="og:description" content="A live, aggregate read on the viral images and clips going around — leaning real, AI-fabricated, miscaptioned, or unverified. Evidence, not verdicts." />\n    <meta property="og:type" content="website" />\n    <meta property="og:image" content="${base}/og-card.png" />\n    <meta name="twitter:card" content="summary_large_image" />`;
+  const body=total?`<div class="rad"><div class="rad-head"><div class="rad-eyebrow">Relity Radar</div><h1 class="rad-h1">What’s circulating right now</h1><p class="rad-sub">A live, aggregate read on the viral images and clips people have run through Relity ${span}. <b>Evidence, not a verdict</b> — each item is one automated read; open any to judge for yourself.</p></div><div class="rad-pulse"><div class="rad-pulse-top"><span class="rad-total">${total}</span> checks analyzed ${span}</div><div class="rad-bar">${bar}</div><div class="rad-legend">${legend}</div></div>${srcLine}<div class="rad-grid">${sections}</div><div class="rad-foot">Updates as new posts are checked. <a href="${base}/trending">See the full feed →</a></div><a class="cta" href="${base}/" style="max-width:320px;margin:8px auto 0">Check something →</a></div>`:`<div class="rad"><div class="rad-head"><div class="rad-eyebrow">Relity Radar</div><h1 class="rad-h1">What’s circulating right now</h1><p class="rad-sub">The radar fills as viral posts get checked — nothing has crossed the threshold yet. <a href="${base}/">Run a check</a> to start the board.</p></div></div>`;
+  res.send(page('Relity Radar — what’s circulating', body, base, og, true));
 });
 
 app.get('/why-ai-video-detectors-fail', (req, res) => {
@@ -995,6 +1035,39 @@ function page(title, body, base, og, wide) {
     .thide:hover{background:rgba(161,74,56,.94)}
     .tadmin{margin-top:11px;font-family:ui-monospace,monospace;font-size:12px;color:var(--g)}
     .tadmin a{color:var(--signal);text-decoration:none}
+    .rad{max-width:860px;margin:0 auto;padding:4px 0 44px}
+    .rad-head{margin:6px 0 22px}
+    .rad-eyebrow{font-family:ui-monospace,monospace;font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--signal);margin-bottom:8px}
+    .rad-h1{font-family:'Space Grotesk',system-ui,sans-serif;font-weight:700;font-size:32px;letter-spacing:-.02em;margin:0 0 8px;color:var(--ink)}
+    .rad-sub{color:var(--g);font-size:15px;line-height:1.55;margin:0;max-width:68ch}
+    .rad-sub a{color:var(--signal);text-decoration:none;font-weight:600}
+    .rad-pulse{background:#fff;border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:18px 18px 14px;margin-bottom:16px}
+    .rad-pulse-top{font-size:13.5px;color:var(--g);margin-bottom:11px}
+    .rad-total{font-family:'Space Grotesk',system-ui,sans-serif;font-weight:700;font-size:17px;color:var(--ink)}
+    .rad-bar{display:flex;height:14px;border-radius:7px;overflow:hidden;gap:2px;background:var(--paper)}
+    .rad-seg{min-width:3px;border-radius:2px}
+    .rad-legend{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px 16px;margin-top:14px}
+    .rl-tile{display:flex;align-items:flex-start;gap:8px}
+    .rl-dot{width:10px;height:10px;border-radius:50%;flex:0 0 auto;margin-top:4px}
+    .rl-n{font-family:'Space Grotesk',system-ui,sans-serif;font-weight:700;font-size:15px;color:var(--ink)}
+    .rl-pct{color:var(--g);font-weight:600;font-size:12.5px}
+    .rl-l{font-size:12.5px;color:var(--g);line-height:1.3}
+    .rad-sources{font-size:13px;color:var(--g);margin:0 2px 18px;line-height:1.5}
+    .rad-sources-h{font-family:ui-monospace,monospace;font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;color:#8A95A4;margin-right:6px}
+    .rad-sc-n{color:#8A95A4}
+    .rad-grid{display:grid;grid-template-columns:1fr;gap:14px}
+    @media(min-width:680px){.rad-grid{grid-template-columns:1fr 1fr}}
+    .rad-sec{background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:14px 15px}
+    .rad-sec-h{font-family:'Space Grotesk',system-ui,sans-serif;font-weight:700;font-size:15.5px;color:var(--ink);display:flex;align-items:center;gap:8px}
+    .rad-sec-n{margin-left:auto;font-family:ui-monospace,monospace;font-size:13px;color:var(--g)}
+    .rad-sec-blurb{font-size:12.5px;color:var(--g);margin:5px 0 11px;line-height:1.45}
+    .rad-item{display:block;padding:9px 0 9px 16px;border-top:1px solid var(--line);text-decoration:none;color:inherit;position:relative}
+    .rad-item:hover .rad-cap{color:var(--signal)}
+    .rad-idot{position:absolute;left:0;top:13px;width:8px;height:8px;border-radius:50%}
+    .rad-cap{font-size:13px;color:var(--ink);line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+    .rad-src{display:block;font-family:ui-monospace,monospace;font-size:11px;color:#8A95A4;margin-top:3px}
+    .rad-foot{text-align:center;color:var(--g);font-size:13.5px;margin:22px 0 6px}
+    .rad-foot a{color:var(--signal);text-decoration:none;font-weight:600}
     .article{max-width:680px;margin:0 auto;padding:6px 0 44px}
     .article-back{display:inline-block;color:var(--signal);text-decoration:none;font-family:'Space Grotesk',system-ui,sans-serif;font-weight:600;font-size:13px;letter-spacing:.04em;margin-bottom:18px}
     .article-h1{font-family:'Space Grotesk',system-ui,sans-serif;font-weight:700;font-size:31px;line-height:1.15;letter-spacing:-.02em;margin:0 0 8px;color:var(--ink)}
