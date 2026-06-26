@@ -42,7 +42,7 @@
   }
   *{box-sizing:border-box} html,body{margin:0;padding:0}
   body{background:var(--paper);color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.5;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
-  .wrap{max-width:800px;margin:0 auto;padding:0 22px} svg{display:block}
+  .wrap{max-width:960px;margin:0 auto;padding:0 22px} svg{display:block}
 
   header.mast{padding:34px 0 0;display:flex;justify-content:center}
   .brand{display:inline-flex;align-items:center;gap:10px;text-decoration:none;color:var(--ink)}
@@ -171,6 +171,13 @@
   .share-row{display:flex;gap:9px;align-items:center}
   .share-row .url{font-family:var(--mono);font-size:12.5px;color:var(--graphite);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:11px 12px}
   .recheck{display:flex;gap:10px;flex-wrap:wrap}
+  .cd{display:grid;grid-template-columns:1fr;gap:18px;padding:22px}
+  .cd-foot{padding:0 22px 22px}
+  @media(min-width:820px){
+    .cd{grid-template-columns:minmax(0,1.55fr) minmax(290px,1fr);gap:26px;align-items:start}
+    .cd-main{order:1}
+    .cd-side{order:2;position:sticky;top:18px}
+  }
 
   .disclaim{color:var(--faint);font-size:12.5px;text-align:center;padding:26px 4px 48px;line-height:1.7}
   .disclaim code{font-family:var(--mono);background:#fff;border:1px solid var(--line);border-radius:5px;padding:1px 6px;color:var(--graphite)}
@@ -247,6 +254,14 @@
     </div>
     <p class="tip" id="loginMsg" style="display:none;margin-top:6px"></p>
     <p class="tip" id="iosHint" style="display:none;margin-top:8px"></p>
+  </section>
+
+  <section class="panel" id="resultDash" style="display:none" aria-live="polite">
+    <div class="cd">
+      <aside class="cd-side" id="cdSide"></aside>
+      <main class="cd-main" id="cdMain"></main>
+    </div>
+    <div class="cd-foot"><button class="btn" id="cdAgain">Check another</button></div>
   </section>
 
   <section class="panel" id="dossier" aria-live="polite">
@@ -810,8 +825,17 @@ $('#linkBtn').addEventListener('click',heroCheck);
 $('#linkInput').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();heroCheck();}});
 /* if a full URL is pasted into the box, just run it */
 $('#linkInput').addEventListener('paste',()=>{ setTimeout(()=>{ const v=$('#linkInput').value.trim(); if(/^https?:\/\/\S+$/i.test(v)) checkLink(); },40); });
-function reset(){dossier.classList.remove('show');$('#submitPanel').style.display='';$('#linkInput').value='';const cap=$('#captionInput');if(cap)cap.value='';fileInput.value='';var _co=document.getElementById('claimOut');if(_co)_co.innerHTML='';var _vo=document.getElementById('videoOut');if(_vo)_vo.innerHTML='';var _cv2=document.getElementById('captionVerdict');if(_cv2)_cv2.innerHTML='';pendingLinkRead=null;window.scrollTo({top:0,behavior:'smooth'});}
-$('#againBtn').addEventListener('click',reset); $('#resetBtn').addEventListener('click',reset);
+function showResultDash(read, sources){
+  if(!read) return;
+  var cls={debunk:'r-red',scrutinize:'r-amber',photo:'r-blue',verified:'r-green'}[read.level]||'r-amber';
+  var side=$('#cdSide'), main=$('#cdMain');
+  if(side) side.innerHTML='<div class="read-banner '+cls+'" style="border-radius:13px"><div class="rb-eyebrow">'+esc(read.eyebrow||'Consensus — the evidence, weighed')+'</div><div class="rb-badge"><span class="dotb"></span>'+esc(read.badge||'')+'</div><div class="rb-line">'+esc(read.line||'')+'</div></div>';
+  if(main) main.innerHTML=(sourceList(sources)||'<div class="card" style="padding:15px"><div class="row-read" style="color:var(--faint)">No public sources surfaced to cite for this one — absence of a record isn’t proof either way.</div></div>');
+  var sp=$('#submitPanel'); if(sp) sp.style.display='none';
+  var d=$('#resultDash'); if(d){ d.style.display=''; try{ window.scrollTo({top:0,behavior:'smooth'}); }catch(_){} }
+}
+function reset(){dossier.classList.remove('show');$('#submitPanel').style.display='';$('#linkInput').value='';const cap=$('#captionInput');if(cap)cap.value='';fileInput.value='';var _co=document.getElementById('claimOut');if(_co)_co.innerHTML='';var _vo=document.getElementById('videoOut');if(_vo)_vo.innerHTML='';var _cv2=document.getElementById('captionVerdict');if(_cv2)_cv2.innerHTML='';var _rd2=document.getElementById('resultDash');if(_rd2)_rd2.style.display='none';pendingLinkRead=null;window.scrollTo({top:0,behavior:'smooth'});}
+$('#againBtn').addEventListener('click',reset); $('#resetBtn').addEventListener('click',reset);var _cda=$('#cdAgain');if(_cda)_cda.addEventListener('click',reset);
 $('#copyBtn').addEventListener('click',()=>{const t=$('#shareUrl').textContent;navigator.clipboard?.writeText(t).then(()=>{const b=$('#copyBtn'),o=b.textContent;b.textContent='Copied';setTimeout(()=>b.textContent=o,1400);});});
 
 /* badge reflects mode */
@@ -853,7 +877,7 @@ async function checkClaim(){
   try{
     const r=await fetch(base+'/api/check-claim',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:t})});
     const j=await r.json();
-    if(j&&j.read){ out.innerHTML=claimBanner(j.read)+sourceList(j.sources); }
+    if(j&&j.read){ showResultDash(j.read,j.sources); }
     else out.innerHTML='<p class="tip">'+esc((j&&j.error)||'Could not check that claim.')+'</p>';
   }catch(_){ out.innerHTML='<p class="tip">Could not reach the server.</p>'; }
   finally{ if(btn){ btn.textContent=lab; btn.disabled=false; } try{refreshMe();}catch(_){} }
