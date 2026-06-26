@@ -231,7 +231,7 @@ app.post('/api/publish', upload.single('image'), async (req, res) => {
     const limit = acct.tier === 'pro' ? billing.PRO_DAILY : FREE_DAILY;
     const prior = sha ? await getReport(id) : null;
     let reverse, reverseCached = false;
-    if (prior && prior.reverse && prior.reverse.connected && !prior.reverse.degraded) {
+    if (prior && prior.reverse && prior.reverse.connected && !prior.reverse.degraded && !prior.reverse.limited) {
       reverse = prior.reverse; reverseCached = true;
     } else if (publicImageUrl && SERPAPI_KEY) {
       if ((await quotaGet(rid)) >= limit) {
@@ -598,7 +598,7 @@ app.get('/check/:id', async (req, res) => {
     }
   }
   if (r.reverse?.connected) {
-    if (r.reverse.degraded) {
+    if (r.reverse.degraded || r.reverse.limited) {
       web += `<div class="row"><div><div class="n">Where it appears</div><div class="rd">${esc(r.reverse.note||'The web-appearance check couldn’t run for this image.')} That evidence is <strong>missing</strong> for this report — which is not the same as the image appearing nowhere.</div></div><span class="st st-present">Unavailable</span></div>`;
     } else {
       const e = r.reverse.earliest;
@@ -628,7 +628,7 @@ app.get('/check/:id', async (req, res) => {
   // CONSENSUS — weigh provenance + where-it-appears + fact-check into one honest read
   const provFromLevel = { ai:'ai-marker', verified:'credential', photo:'camera', scrutinize:'stripped' };
   const prov = r.prov || provFromLevel[(r.read||{}).level] || 'stripped';
-  const reachOK = !!(r.reverse?.connected && !r.reverse.degraded);
+  const reachOK = !!(r.reverse?.connected && !r.reverse.degraded && !r.reverse.limited);
   const cInterp = reachOK ? interpretDomains(r.reverse.domains) : { flag:null, examined:false };
   const reachFlag = cInterp.flag || null;
   const examined = !!cInterp.examined;
