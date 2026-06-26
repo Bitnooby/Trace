@@ -161,6 +161,7 @@ const billing = require('./billing')({ redisOn, redisCmd, readCookie });
 const ai      = require('./ai')({ redisOn, redisCmd });
 const claims  = require('./claims')({ SERPAPI_KEY, FACTCHECK_KEY, ai, tierOf: billing.tierOf, serpTry });
 const video   = require('./video')({ SERPAPI_KEY, putImage, ai, serpTry });
+const news    = require('./news')();
 async function meteredGate(name, req, res, next) {
   if (!(await allow(name, clientIp(req), RL_PUBLISH.max, RL_PUBLISH.win)))
     return res.status(429).json({ error: 'Too many checks right now — give it a moment.' });
@@ -777,6 +778,31 @@ app.get('/radar', async (req, res) => {
   res.send(page('Relity Radar — what’s circulating', body, base, og, true));
 });
 
+app.get('/feed', async (req, res) => {
+  const base = `${req.protocol}://${req.get('host')}`;
+  const esc = t => (t == null ? '' : String(t)).replace(/[<>&"]/g, c => ({ '<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;' }[c]));
+  const CATL = { all:'All', world:'World', tech:'Tech', business:'Business', science:'Science' };
+  const cat = CATL[req.query.cat] ? req.query.cat : 'all';
+  let data; try { data = await news.getFeed(); } catch(e) { data = { clusters:[], items:[], at:0 }; }
+  let clusters = (data.clusters || []).slice();
+  if (cat !== 'all') clusters = clusters.filter(c => c.cat === cat);
+  const corrob = clusters.filter(c => c.n >= 2);
+  const single = clusters.filter(c => c.n < 2).slice(0, 18);
+  const outlets = (news.OUTLETS || []).join(', ');
+  const relTime = ts => { if(!ts) return ''; const m=Math.max(1,Math.round((Date.now()-ts)/60000)); if(m<60) return m+'m ago'; const h=Math.round(m/60); if(h<24) return h+'h ago'; return Math.round(h/24)+'d ago'; };
+  const card = c => {
+    const conf = c.n>=3?'high':c.n>=2?'med':'low';
+    const pill = c.n>=2 ? `${c.n} outlets agree` : 'single source';
+    const chips = c.items.slice(0,6).map(i=>`<a class="fd-chip" href="${esc(i.link)}" target="_blank" rel="noopener noreferrer">${esc(i.outlet)}</a>`).join('');
+    return `<div class="fd-card fd-${conf}"><div class="fd-meta"><span class="fd-pill fd-pill-${conf}">${esc(pill)}</span><span class="fd-cat">${esc(c.cat)}</span><span class="fd-time">${esc(relTime(c.ts))}</span></div><a class="fd-title" href="${esc(c.rep.link)}" target="_blank" rel="noopener noreferrer">${esc(c.rep.title)}</a><div class="fd-chips">${chips}</div></div>`;
+  };
+  const tabs = Object.keys(CATL).map(k=>`<a class="fd-tab ${cat===k?'on':''}" href="${base}/feed${k==='all'?'':'?cat='+k}">${esc(CATL[k])}</a>`).join('');
+  const hasAny = corrob.length || single.length;
+  const body = `<div class="fd"><div class="fd-head"><div class="rad-eyebrow">Relity News Radar</div><h1 class="rad-h1">Corroborated news</h1><p class="rad-sub">Stories ranked by how many independent newsrooms are carrying them right now. <b>Corroboration is breadth of reporting, not proof of truth</b> — it shows how widely a story is being reported, then you read it yourself. Tracking ${esc(outlets)}.</p><div class="fd-tabs">${tabs}</div></div>${corrob.length?`<div class="fd-list">${corrob.slice(0,40).map(card).join('')}</div>`:(hasAny?'<p class="fd-note">No multi-outlet stories in this category right now — see single-source below.</p>':'')}${single.length?`<div class="fd-subhead">Reported by a single outlet so far</div><div class="fd-list fd-list-dim">${single.map(card).join('')}</div>`:''}${!hasAny?'<p class="rad-empty">The feed is warming up — refresh in a moment.</p>':''}<div class="rad-foot">Refreshes every few minutes. <a href="${base}/radar">What’s circulating →</a></div></div>`;
+  const og = `\n    <meta property="og:title" content="Relity News Radar — corroborated news" />\n    <meta property="og:description" content="News ranked by how many independent newsrooms carry each story. Corroboration is breadth of reporting, not proof — evidence, not a verdict." />\n    <meta property="og:type" content="website" />\n    <meta property="og:image" content="${base}/og-card.png" />\n    <meta name="twitter:card" content="summary_large_image" />`;
+  res.send(page('Relity News Radar — corroborated news', body, base, og, true));
+});
+
 app.get('/why-ai-video-detectors-fail', (req, res) => {
   const base = `${req.protocol}://${req.get('host')}`;
   const og = `
@@ -1082,6 +1108,31 @@ function page(title, body, base, og, wide) {
     .rad-feed{display:flex;flex-direction:column;background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:4px 15px}
     .rad-feed .rad-item:first-child{border-top:none}
     .rad-empty{color:var(--g);font-size:15px;text-align:center;padding:36px 0}
+    .fd{max-width:820px;margin:0 auto;padding:4px 0 44px}
+    .fd-head{margin:6px 0 18px}
+    .fd-tabs{display:inline-flex;flex-wrap:wrap;gap:4px;margin-top:14px;background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:3px}
+    .fd-tab{font-family:'Space Grotesk',system-ui,sans-serif;font-weight:600;font-size:13px;color:var(--g);text-decoration:none;padding:6px 13px;border-radius:8px}
+    .fd-tab.on{background:#fff;color:var(--ink);box-shadow:var(--shadow)}
+    .fd-list{display:flex;flex-direction:column;gap:12px;margin-top:8px}
+    .fd-list-dim{opacity:.78}
+    .fd-subhead{font-family:ui-monospace,monospace;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#8A95A4;margin:24px 0 6px}
+    .fd-card{background:#fff;border:1px solid var(--line);border-left:3px solid var(--line);border-radius:12px;box-shadow:var(--shadow);padding:13px 15px}
+    .fd-high{border-left-color:#2E7D5A}
+    .fd-med{border-left-color:#3C5E8A}
+    .fd-low{border-left-color:#8A95A4}
+    .fd-meta{display:flex;align-items:center;gap:10px;margin-bottom:7px;flex-wrap:wrap}
+    .fd-pill{font-family:'Space Grotesk',system-ui,sans-serif;font-weight:700;font-size:11.5px;padding:2px 9px;border-radius:20px;color:#fff}
+    .fd-pill-high{background:#2E7D5A}
+    .fd-pill-med{background:#3C5E8A}
+    .fd-pill-low{background:#8A95A4}
+    .fd-cat{font-family:ui-monospace,monospace;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--g)}
+    .fd-time{margin-left:auto;font-size:11.5px;color:#8A95A4}
+    .fd-title{display:block;font-family:'Space Grotesk',system-ui,sans-serif;font-weight:600;font-size:16px;line-height:1.35;color:var(--ink);text-decoration:none;letter-spacing:-.01em}
+    .fd-title:hover{color:var(--signal)}
+    .fd-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px}
+    .fd-chip{font-size:11.5px;color:var(--g);text-decoration:none;background:var(--paper);border:1px solid var(--line);border-radius:7px;padding:2px 8px}
+    .fd-chip:hover{color:var(--signal);border-color:var(--signal)}
+    .fd-note{color:var(--g);font-size:14px;margin:10px 0}
     .article{max-width:680px;margin:0 auto;padding:6px 0 44px}
     .article-back{display:inline-block;color:var(--signal);text-decoration:none;font-family:'Space Grotesk',system-ui,sans-serif;font-weight:600;font-size:13px;letter-spacing:.04em;margin-bottom:18px}
     .article-h1{font-family:'Space Grotesk',system-ui,sans-serif;font-weight:700;font-size:31px;line-height:1.15;letter-spacing:-.02em;margin:0 0 8px;color:var(--ink)}
