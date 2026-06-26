@@ -13,6 +13,7 @@ module.exports = function telegram({ claims, ai, img, video, news, redisOn, redi
   const BASE   = (process.env.RELITY_URL || 'https://relity.ai').replace(/\/$/, '');
   const hookSecret = crypto.createHmac('sha256', SECRET).update('telegram-webhook').digest('hex').slice(0, 40);
   const on = !!TOKEN;
+  const VIA = '\n\n🔎 via @RelityCheck_bot — forward this, or check anything yourself';
 
   const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
@@ -85,7 +86,7 @@ module.exports = function telegram({ claims, ai, img, video, news, redisOn, redi
       const doms = [...new Set(items.map(i => i.source).filter(Boolean))].slice(0, 4).join(', ');
       if (doms) msg += '\n\n<i>Seen on:</i> ' + esc(doms);
     }
-    return msg;
+    return msg + VIA;
   }
 
   async function captionCheck(caption) {
@@ -170,6 +171,20 @@ module.exports = function telegram({ claims, ai, img, video, news, redisOn, redi
       if (/^\/subscribe\b/.test(text)) { await subAdd(chatId); await send(chatId, '✅ Subscribed. You’ll get the <b>daily corroborated-news digest</b> — the top stories multiple independent newsrooms are carrying. Send /digest to see today’s now, or /unsubscribe to stop.'); return; }
       if (/^\/unsubscribe\b/.test(text)) { await subDel(chatId); await send(chatId, 'Done — you’re unsubscribed from the daily digest. Send /subscribe anytime to resume.'); return; }
       if (/^\/digest\b/.test(text)) { const msg = await buildDigest(); await send(chatId, msg || 'No multi-outlet stories on the radar right now — check back soon, or see ' + BASE + '/feed.'); return; }
+      if (/^\/share\b/.test(text)) { await send(chatId, '📣 <b>Share Relity</b>\n\nForward this to a friend or drop it in a group:\n\n<i>Is it real? Send any claim, post, image, or video to @RelityCheck_bot and it shows the evidence — sourced, debunked, opinion, or AI-generated. Evidence, not verdicts.</i>\n\nhttps://t.me/RelityCheck_bot'); return; }
+      if (/^\/check(@\w+)?\b/i.test(text)) {
+        const rest = text.replace(/^\/check(@\w+)?\s*/i, '').trim();
+        const tgt = m.reply_to_message;
+        if (rest) { const cls = (ai && ai.analyzeClaim) ? await ai.analyzeClaim({ tier: 'free', text: rest }).catch(() => null) : null; await send(chatId, formatClaim(await claims.analyze(rest, cls))); return; }
+        if (tgt) {
+          if (tgt.photo && tgt.photo.length) { await checkPhoto(chatId, tgt.photo[tgt.photo.length - 1].file_id, tgt.caption || ''); return; }
+          const tv = tgt.video || tgt.video_note || (tgt.document && /^video\//.test(tgt.document.mime_type || '') ? tgt.document : null) || tgt.animation;
+          if (tv && tv.file_id) { await checkVideoMessage(chatId, tv.file_id, tgt.caption || ''); return; }
+          const tt = (tgt.text || tgt.caption || '').replace(/https?:\/\/\S+/gi, '').trim();
+          if (tt) { const cls = (ai && ai.analyzeClaim) ? await ai.analyzeClaim({ tier: 'free', text: tt }).catch(() => null) : null; await send(chatId, formatClaim(await claims.analyze(tt, cls))); return; }
+        }
+        await send(chatId, 'Reply <b>/check</b> to any message, image, or video — or send <b>/check</b> followed by a claim. In a group, reply /check to fact-check what someone shared.'); return;
+      }
       const stripped = text.replace(/https?:\/\/\S+/gi, '').trim();
       if (!stripped) {
         await send(chatId, '🔗 That’s a link on its own. I can’t open videos or posts from X/social links directly. To check:\n• an <b>image</b> or <b>video</b> → download it and send the <b>file</b> here\n• a <b>claim</b> → send the text, not just the link\n\nOr paste the link at ' + BASE + '.');
@@ -195,6 +210,15 @@ module.exports = function telegram({ claims, ai, img, video, news, redisOn, redi
     try {
       const j = await api('setWebhook', { url: BASE + '/webhook/telegram', secret_token: hookSecret, allowed_updates: ['message'] });
       console.log('telegram setWebhook:', j && j.ok ? 'ok @ ' + BASE + '/webhook/telegram' : JSON.stringify(j).slice(0, 160));
+      await api('setMyCommands', { commands: [
+        { command: 'start', description: 'What Relity does and how to use it' },
+        { command: 'check', description: 'Check a claim — or reply /check to any message, image, or video' },
+        { command: 'subscribe', description: 'Daily digest of corroborated news' },
+        { command: 'digest', description: 'Today’s corroborated-news digest' },
+        { command: 'unsubscribe', description: 'Stop the daily digest' },
+        { command: 'share', description: 'Share Relity with a friend or group' },
+        { command: 'help', description: 'How to check claims, images, and video' }
+      ] });
     } catch (e) { console.error('telegram register:', e.message); }
     setInterval(digestTick, 5 * 60 * 1000);
     console.log('telegram digest scheduler armed for ' + DIGEST_HOUR + ':00 UTC');
