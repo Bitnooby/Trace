@@ -27,6 +27,7 @@ module.exports = function telegram({ claims, ai, img, video, news, redisOn, redi
 
   // ---- daily corroborated-news digest ----
   const DIGEST_HOUR = Number.isFinite(+process.env.DIGEST_HOUR) ? +process.env.DIGEST_HOUR : 13; // UTC hour
+  const DIGEST_CHANNEL = process.env.TELEGRAM_DIGEST_CHANNEL || ''; // optional public channel (@handle or numeric id) to auto-post the daily digest
   const memSubs = new Set();
   let lastSentDay = '';
   async function subAdd(id) { id = String(id); memSubs.add(id); if (redisOn) { try { await redisCmd(['SADD', 'relity:digest:subs', id]); } catch {} } }
@@ -48,6 +49,7 @@ module.exports = function telegram({ claims, ai, img, video, news, redisOn, redi
     const msg = await buildDigest();
     if (!msg) return { sent: 0, skipped: true };
     const subs = await subList();
+    if (DIGEST_CHANNEL) { try { await send(DIGEST_CHANNEL, msg); } catch (e) { console.error('digest channel:', e.message); } }
     let sent = 0;
     for (const id of subs) {
       try { const r = await send(id, msg); if (r && r.ok) sent++; else if (r && r.error_code === 403) await subDel(id); } catch {}
