@@ -163,8 +163,8 @@
   .state.present{background:var(--ok-wash);color:var(--ok)} .state.absent{background:var(--paper);color:var(--faint);border:1px solid var(--line)}
   .state.caution{background:var(--warn-wash);color:var(--warn)} .state.signal{background:var(--signal-wash);color:var(--signal)}
   .state.ai{background:var(--ai-wash);color:var(--ai)} .state.srv{background:var(--srv-wash);color:var(--srv)}
-  .row,.section-label{opacity:0;transform:translateY(7px)}
-  .revealed .row,.revealed .section-label{opacity:1;transform:none;transition:opacity .35s,transform .35s}
+  #rows .row,#rows .section-label{opacity:0;transform:translateY(7px)}
+  #rows.revealed .row,#rows.revealed .section-label{opacity:1;transform:none;transition:opacity .35s,transform .35s}
 
   .footer-actions{padding:22px;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:16px}
   .share-lab{font-family:var(--display);font-weight:600;font-size:11.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);margin-bottom:-4px}
