@@ -481,7 +481,7 @@ function computeConsensus(prov, reach, debunked, count, examined, vintage, misma
   const places = count ? ` (seen across ${spreadPhrase(count)})` : '';
   const vint = vintage ? ` It’s been online since ${vintage} — be wary of any caption claiming it’s recent or breaking.` : '';
   const r=(level,badge,line,action)=>({eyebrow:E,level,badge,action,line:(level==='debunk'||level==='ai')?line:line+vint});
-  if(debunked) return r('debunk','Debunked on record',`Fact-checkers have already debunked this image — the strongest signal there is. Treat it as false${places}.`,'Don’t share it. Read the fact-check below.');
+  if(debunked) return r('debunk','Debunked on record',`Fact-checkers have addressed this image and rated the claim false or misleading${places}. That usually means real footage paired with a false or recycled caption — so treat the image as unreliable, though the underlying event may well be real. Read their finding below.`,'Read the fact-check below to see exactly what they found — don’t reshare the image as proof.');
   if(prov==='ai-cred') return r('ai','AI-generated','Its Content Credential declares it AI-generated — a strong, embedded signal'+(reach==='ai'?', and it lives on AI-image sites too. Everything lines up.':'.'),'Treat as AI-generated.');
   if(mismatchYear) return {eyebrow:E,level:'scrutinize',badge:'Likely recontextualized',line:`The caption presents this as current, but the image has been online since ${mismatchYear} — the classic recontextualization move: a real, older photo paired with a false new caption.`,action:'Find where this image first appeared and what it actually showed. Your call.'};
   if(examined) return r('scrutinize','Likely fact-checked',`This image appears on fact-checking sites${places} — very likely it’s already been examined. Read what they concluded before trusting any caption attached to it.`,'Open the fact-checkers’ page and see their verdict before sharing.');
@@ -696,7 +696,7 @@ async function publishToServer(file,hash,localFindings,readObj,sig,claim){
   if(fc.connected && (fc.claims||[]).length){
     debunked=true;
     const _t={}; (fc.claims||[]).forEach(c=>{var k=(c.publisher||'')+': '+(c.rating||''); _t[k]=(_t[k]||0)+1;}); const txt=Object.keys(_t).map(k=> k+(_t[k]>1?' ('+_t[k]+' fact-checks)':'')).join(' · ');
-    setRow('r-fact',{ic:'caution',state:['caution','Matches'],read:'Fact-checkers have addressed claims tied to this image.',data:txt});
+    setRow('r-fact',(function(){var t=fc.claims[0];var ct=((t.claim||'')+'').replace(/\s+/g,' ').trim().slice(0,170);var pu=[...new Set(fc.claims.map(c=>c.publisher).filter(Boolean))].slice(0,2).join(', ')||'A fact-checker';return {ic:'caution',state:['caution','Fact-checked'],read:pu+' reviewed this'+(ct?' and rated “'+ct+'” as '+(t.rating||'—'):' (rated '+(t.rating||'—')+')')+'. A “false” rating often means real footage that’s miscaptioned or recycled — read their work to see exactly what was checked.',data:(t.url||'')};})());
   } else if(fc.connected){
     setRow('r-fact',{ic:'present',state:['present','No debunk'],read:'No published fact-check matched this image. That means no debunk is on record — not that it’s verified true.',data:'No fact-check matches found.'});
   } else {

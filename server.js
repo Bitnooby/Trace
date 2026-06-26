@@ -573,7 +573,7 @@ function computeConsensus(prov, reach, debunked, count, examined, vintage, misma
   const places = count ? ` (seen across ${spreadPhrase(count)})` : '';
   const vint = vintage ? ` It’s been online since ${vintage} — be wary of any caption claiming it’s recent or breaking.` : '';
   const r=(level,badge,line)=>({eyebrow:E,level,badge,line:(level==='debunk'||level==='ai')?line:line+vint});
-  if(debunked) return r('debunk','Debunked on record',`Fact-checkers have already debunked this image — the strongest signal there is. Treat it as false${places}.`);
+  if(debunked) return r('debunk','Debunked on record',`Fact-checkers have addressed this image and rated the claim false or misleading${places}. That usually means real footage paired with a false or recycled caption — so treat the image as unreliable, though the underlying event may well be real. Read their finding below.`);
   if(prov==='ai-cred') return r('ai','AI-generated','Its Content Credential declares it AI-generated — a strong, embedded signal'+(reach==='ai'?', and it lives on AI-image sites too. Everything lines up.':'.'));
   if(mismatchYear) return {eyebrow:E,level:'scrutinize',badge:'Likely recontextualized',line:`The caption presents this as current, but the image has been online since ${mismatchYear} — the classic recontextualization move: a real, older photo paired with a false new caption.`};
   if(examined) return r('scrutinize','Likely fact-checked',`This image appears on fact-checking sites${places} — very likely it’s already been examined. Read what they concluded before trusting any caption attached to it.`);
@@ -676,7 +676,7 @@ app.get('/check/:id', async (req, res) => {
     const claims = r.fact.claims || [];
     if (claims.length) {
       const _t={}; claims.forEach(x=>{var k=(x.publisher||'')+': '+(x.rating||''); _t[k]=(_t[k]||0)+1;}); const c = Object.keys(_t).map(k=> esc(k)+(_t[k]>1?' ('+_t[k]+' fact-checks)':'')).join(' · ');
-      web += `<div class="row"><div><div class="n">Fact-check record</div><div class="rd">Fact-checkers have addressed claims tied to this image. ${c}</div></div><span class="st st-caution">Matches</span></div>`;
+      web += (function(){ var top=claims[0]; var ctxt=esc(((top.claim||'')+'').replace(/\s+/g,' ').trim().slice(0,170)); var pubs=esc([...new Set(claims.map(x=>x.publisher).filter(Boolean))].slice(0,2).join(', ')||'A fact-checker'); var link=top.url?` <a href="${esc(top.url)}" target="_blank" rel="noopener noreferrer" style="color:var(--signal);text-decoration:none">Read it ↗</a>`:''; return `<div class="row"><div><div class="n">Fact-check record</div><div class="rd">${pubs} reviewed this${ctxt?` and rated “${ctxt}”`:''} as <b>${esc(top.rating||'—')}</b>.${link}<br><span class="dim">A “false” rating often means the footage is real but miscaptioned or recycled — read it to see exactly what was checked.</span></div></div><span class="st st-caution">Fact-checked</span></div>`; })();
     } else {
       web += `<div class="row"><div><div class="n">Fact-check record</div><div class="rd">No published fact-check matched this image — no debunk is on record, which is not the same as "verified true."</div></div><span class="st st-present">No debunk</span></div>`;
     }
