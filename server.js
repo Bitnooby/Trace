@@ -265,6 +265,12 @@ app.post('/api/publish', upload.single('image'), async (req, res) => {
 
     const report = { id, sha256: sha, createdAt: Date.now(), findings, read, reverse, reverseCached, fact, aiRead, prov: (req.body.prov || null), claim: claimOut, hasImage: !!req.file };
     await putReport(id, report);
+    try {
+      if (req.file && claimOut && reverse && reverse.connected && !reverse.limited && !reverse.degraded && (reverse.count||0) >= 5) {
+        const trd = consensusOf(report);
+        await trendPush({ id, at: Date.now(), cap: clip((claimOut.title||claimOut.description||''),140), src: claimOut.source||'', n: reverse.count||0, badge: trd?trd.badge:'', level: trd?trd.level:'scrutinize' });
+      }
+    } catch (e) { /* trending is best-effort, never block a check */ }
     res.json({ id, reverse, fact, claim: claimOut, aiRead, quota: { used: await quotaGet(rid), limit, tier: acct.tier } });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -575,6 +581,44 @@ function computeConsensus(prov, reach, debunked, count, examined, vintage, misma
   return r('scrutinize','Unverified','No provenance survived, and no fact-check is on record'+(reach==='stock'?'; it appears on stock-image sites':'')+`${places}. It could be real, AI, or real media with a false caption.`);
 }
 
+const memTrend = [];
+async function trendPush(entry){
+  try{ memTrend.unshift(entry); if(memTrend.length>60) memTrend.length=60; }catch{}
+  if(redisOn){ try{ await redisCmd(['LPUSH','relity:trend',JSON.stringify(entry)]); await redisCmd(['LTRIM','relity:trend','0','59']); }catch(e){ console.error('trendPush:',e.message); } }
+}
+async function trendList(){
+  if(redisOn){ try{ const v=await redisCmd(['LRANGE','relity:trend','0','59']); if(Array.isArray(v)) return v.map(x=>{ try{ return typeof x==='string'?JSON.parse(x):x; }catch{ return null; } }).filter(Boolean); }catch(e){ console.error('trendList:',e.message); } }
+  return memTrend.slice();
+}
+function consensusOf(r){
+  if(!r) return null;
+  const provFromLevel = { ai:'ai-marker', verified:'credential', photo:'camera', scrutinize:'stripped' };
+  const prov = r.prov || provFromLevel[(r.read||{}).level] || 'stripped';
+  const reachOK = !!(r.reverse && r.reverse.connected && !r.reverse.degraded && !r.reverse.limited);
+  const cInterp = reachOK ? interpretDomains(r.reverse.domains) : { flag:null, examined:false };
+  const reachFlag = cInterp.flag || null;
+  const examined = !!cInterp.examined;
+  const vintage = reachOK ? vintageYear(r.reverse.earliest) : null;
+  const debunked = !!(r.fact && r.fact.connected && (r.fact.claims || []).length);
+  const mismatchYear = (r.claim && r.claim.mismatch && r.claim.mismatch.is) ? r.claim.mismatch.year : null;
+  const aiConcern = (r.aiRead && /READ:\s*Likely AI-generated/i.test(r.aiRead.text || '')) ? 'ai' : null;
+  return computeConsensus(prov, reachFlag, debunked, reachOK ? (r.reverse.count || 0) : 0, examined, vintage, mismatchYear, aiConcern);
+}
+app.get('/trending', async (req, res) => {
+  const base = `${req.protocol}://${req.get('host')}`;
+  const esc = t => (t == null ? '' : String(t)).replace(/[<>&"]/g, c => ({ '<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;' }[c]));
+  let items=[]; try{ items = await trendList(); }catch(e){ items=[]; }
+  const seen=new Set(), list=[];
+  for(const it of items){ if(it&&it.id&&!seen.has(it.id)){ seen.add(it.id); list.push(it); } }
+  const DOT={debunk:'#A14A38',ai:'#A14A38',verified:'#2E7D5A',photo:'#3C5E8A',scrutinize:'#8A6A2E'};
+  const cards=list.slice(0,36).map(it=>{
+    const dot=DOT[it.level]||'#8A6A2E';
+    return `<a class="tcard" href="${base}/check/${esc(it.id)}"><div class="tthumb" style="background-image:url('${base}/img/${esc(it.id)}')"></div><div class="tbody"><div class="tbadge"><span class="tdot" style="background:${dot}"></span>${esc(it.badge||'Checked')}</div>${it.cap?`<div class="tcap">${esc(it.cap)}</div>`:''}${it.src?`<div class="tsrc">${esc(it.src)}</div>`:''}</div></a>`;
+  }).join('');
+  const body=`<div class="thead"><h1 class="th1">Trending checks</h1><p class="tsub">Images and clips circulating online, recently run through Relity. <b>Evidence, not a verdict</b> — open any report and judge for yourself.</p></div>${cards?`<div class="tgrid">${cards}</div>`:'<p class="tempty">No trending checks yet. Paste a viral post on the home page to start the board.</p>'}<a class="cta" href="${base}/" style="max-width:320px;margin:26px auto 0">Check something →</a>`;
+  res.send(page('Relity — Trending checks', body, base, null, true));
+});
+
 app.get('/check/:id', async (req, res) => {
   const r = await getReport(req.params.id);
   const base = `${req.protocol}://${req.get('host')}`;
@@ -765,6 +809,19 @@ function page(title, body, base, og, wide) {
       .rpt-main{order:1}
       .rpt-side{order:2;position:sticky;top:20px}
     }
+    .thead{margin:8px 0 20px}
+    .th1{font-family:'Space Grotesk',system-ui,sans-serif;font-weight:700;font-size:30px;letter-spacing:-.02em;margin:0 0 6px;color:var(--ink)}
+    .tsub{color:var(--g);font-size:14.5px;margin:0;max-width:64ch;line-height:1.55}
+    .tgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px;margin-top:8px}
+    .tcard{display:flex;flex-direction:column;background:#fff;border:1px solid var(--line);border-radius:14px;overflow:hidden;text-decoration:none;color:inherit;box-shadow:var(--shadow);transition:transform .12s ease}
+    .tcard:hover{transform:translateY(-2px)}
+    .tthumb{width:100%;aspect-ratio:16/10;background:#0d1117 center/cover no-repeat;border-bottom:1px solid var(--line)}
+    .tbody{padding:12px 13px}
+    .tbadge{display:flex;align-items:center;gap:7px;font-family:'Space Grotesk',system-ui,sans-serif;font-weight:600;font-size:13px;color:var(--ink)}
+    .tdot{width:9px;height:9px;border-radius:50%;flex:0 0 auto}
+    .tcap{color:var(--g);font-size:12.5px;line-height:1.45;margin-top:6px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+    .tsrc{color:#8A95A4;font-size:11.5px;margin-top:7px;font-family:ui-monospace,monospace}
+    .tempty{color:var(--g);font-size:15px;text-align:center;padding:46px 0}
   </style></head><body><div class="w${wide ? ' wide' : ''}">
     <div class="brand"><span class="g"><svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg"><g stroke="#fff" stroke-width="8" stroke-linecap="round"><line x1="32" y1="34" x2="50" y2="52"/><line x1="50" y1="52" x2="70" y2="36"/><line x1="50" y1="52" x2="52" y2="78"/></g><circle cx="32" cy="34" r="8" fill="#fff"/><circle cx="70" cy="36" r="8" fill="#fff"/><circle cx="52" cy="78" r="8" fill="#fff"/><circle cx="50" cy="52" r="9.5" fill="#fff"/></svg></span> Relity</div>${body}
   </div></body></html>`;
