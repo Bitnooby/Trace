@@ -90,6 +90,12 @@
 
   #dossier{margin-top:24px;display:none}
   #dossier.show{display:block;animation:rise .4s ease both}
+  .doss-grid{display:flex;flex-direction:column}
+  @media(min-width:860px){
+    #dossier .doss-grid{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(300px,1fr);align-items:start}
+    #dossier .doss-main{order:1;min-width:0;border-right:1px solid var(--line)}
+    #dossier .doss-side{order:2}
+  }
   @keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
   .doss-head{display:flex;gap:18px;padding:22px;border-bottom:1px solid var(--line);align-items:flex-start}
   .preview{position:relative;width:140px;height:140px;flex:0 0 auto;border-radius:12px;overflow:hidden;background:#0c1016;border:1px solid var(--line)}
@@ -265,6 +271,8 @@
   </section>
 
   <section class="panel" id="dossier" aria-live="polite">
+    <div class="doss-grid">
+    <aside class="doss-side">
     <div class="doss-head">
       <div class="preview" id="preview"><img id="previewImg" alt="Submitted image preview" /><div class="scanline"></div></div>
       <div class="doss-meta">
@@ -285,12 +293,16 @@
       <div class="meters" id="meters"></div>
     </div>
 
+    </aside>
+    <main class="doss-main">
     <div class="transparency">
       <svg class="ti" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 16v-4M12 8h.01"/></svg>
       <p><b>This is evidence, not a verdict.</b> Missing camera data doesn't prove a fake — screenshots and re-saves strip it. Present data can be forged. Weigh the signals; don't hand the judgment to a machine.</p>
     </div>
 
     <div id="rows"></div>
+    </main>
+    </div>
 
     <div class="footer-actions">
       <div>
