@@ -566,6 +566,7 @@ function aiLeanOf(t){
   if(/READ:\s*Inconclusive/i.test(t)) return null;
   if(/lean[s]?[^.]{0,40}AI[- ]?generat/i.test(t)) return 'ai';
   if(/(consistent with|rather than)[^.]{0,30}(real|genuine|authentic|photograph)/i.test(t)) return 'real';
+  if(/lean[s]?[^.]{0,25}(real|genuine|authentic)/i.test(t)) return 'real';
   return null;
 }
 function computeConsensus(prov, reach, debunked, count, examined, vintage, mismatchYear, aiConcern){
@@ -573,7 +574,11 @@ function computeConsensus(prov, reach, debunked, count, examined, vintage, misma
   const places = count ? ` (seen across ${spreadPhrase(count)})` : '';
   const vint = vintage ? ` It’s been online since ${vintage} — be wary of any caption claiming it’s recent or breaking.` : '';
   const r=(level,badge,line)=>({eyebrow:E,level,badge,line:(level==='debunk'||level==='ai')?line:line+vint});
-  if(debunked) return r('debunk','Debunked on record',`Fact-checkers have addressed this image and rated the claim false or misleading${places}. That usually means real footage paired with a false or recycled caption — so treat the image as unreliable, though the underlying event may well be real. Read their finding below.`);
+  if(debunked){
+    const dbadge = aiConcern==='ai' ? 'Fabricated — likely AI' : aiConcern==='real' ? 'Possibly miscaptioned footage' : 'Fact-checked false';
+    const dwhy = aiConcern==='ai' ? 'fact-checkers flagged it and the closest look sees AI or manipulation tells — most likely fabricated.' : aiConcern==='real' ? 'fact-checkers flagged it, yet the closest look reads the footage itself as real — so this is most likely real footage paired with a false or recycled caption. The underlying event may well be real; the image is being misused.' : 'fact-checkers rated the claim false or misleading. A "false" rating often means real footage with a false caption — read their finding to see exactly what was checked.';
+    return r('debunk',dbadge,`Fact-checkers have addressed this image${places} — ${dwhy} Read their finding below.`);
+  }
   if(prov==='ai-cred') return r('ai','AI-generated','Its Content Credential declares it AI-generated — a strong, embedded signal'+(reach==='ai'?', and it lives on AI-image sites too. Everything lines up.':'.'));
   if(mismatchYear) return {eyebrow:E,level:'scrutinize',badge:'Likely recontextualized',line:`The caption presents this as current, but the image has been online since ${mismatchYear} — the classic recontextualization move: a real, older photo paired with a false new caption.`};
   if(examined) return r('scrutinize','Likely fact-checked',`This image appears on fact-checking sites${places} — very likely it’s already been examined. Read what they concluded before trusting any caption attached to it.`);
