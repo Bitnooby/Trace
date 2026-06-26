@@ -150,6 +150,9 @@
   .ic-present{background:var(--ok-wash);color:var(--ok)} .ic-absent{background:var(--paper);color:var(--faint)}
   .ic-caution{background:var(--warn-wash);color:var(--warn)} .ic-signal{background:var(--signal-wash);color:var(--signal)}
   .ic-ai{background:var(--ai-wash);color:var(--ai)} .ic-srv{background:var(--srv-wash);color:var(--srv)}
+  .row-read .ai-chip{display:inline-block;font-family:var(--mono);font-size:11.5px;font-weight:600;background:var(--ai-wash);color:var(--ai);border-radius:20px;padding:4px 11px;margin:1px 0 9px;letter-spacing:.02em}
+  .row-read .ai-model{font-family:var(--display);font-weight:700;font-size:13.5px;color:var(--ink);margin:15px 0 3px}
+  .row-read .aih{font-family:var(--display);font-weight:700;font-size:12.5px;color:var(--ink);margin:12px 0 3px;letter-spacing:.01em}
   .row-main{min-width:0}
   .row-name{font-family:var(--display);font-weight:600;font-size:15px}
   .row-read{color:var(--graphite);font-size:13.5px;margin-top:4px;line-height:1.5;overflow-wrap:anywhere;white-space:pre-line}
@@ -604,11 +607,21 @@ function vintageYear(earliest){
 }
 // the raw Lens count is page-capped (~50-60), so report spread qualitatively, never as a precise (misleading) number
 function spreadPhrase(n){ if(!n) return ''; if(n<=3) return 'a few places'; if(n<=15) return 'several places'; return 'many places'; }
-function setRow(id,{ic,state,read,data}){
+function fmtAIRead(t){
+  var h=esc(t||'');
+  h=h.replace(/^(Claude|Gemini)\s*—\s*$/gm,'<div class="ai-model">$1</div>');
+  h=h.replace(/^READ:\s*([^\n·•]+?)\s*[·•]\s*(\d{1,3})\s*%\s*$/gmi,'<div class="ai-chip">$1 · $2%</div>');
+  h=h.replace(/\*\*([^*]+)\*\*/g,'<b>$1</b>');
+  h=h.replace(/^#{1,6}\s*(.+)$/gm,'<div class="aih">$1</div>');
+  h=h.replace(/\n{2,}/g,'<br><br>').replace(/\n/g,'<br>');
+  return h;
+}
+function setRow(id,{ic,state,read,readHTML,data}){
   const el=document.getElementById(id); if(!el) return;
   const[cls,label]=state;
   el.querySelector('.row-ic').className='row-ic ic-'+ic; el.querySelector('.row-ic').innerHTML=svg(ic);
-  if(read!=null) el.querySelector('.row-read').textContent=read;
+  if(readHTML!=null) el.querySelector('.row-read').innerHTML=readHTML;
+  else if(read!=null) el.querySelector('.row-read').textContent=read;
   if(data!=null) el.querySelector('.row-data').textContent=data;
   el.querySelector('.state').className='state '+cls; el.querySelector('.state').textContent=label;
 }
@@ -684,7 +697,7 @@ async function publishToServer(file,hash,localFindings,readObj,sig,claim){
   }
 
   const air=j.aiRead;
-  if(air&&air.text){ setRow('r-ai',{ic:'ai',state:['ai', air.tierLabel||'AI'],read:air.text,data:'AI vision · '+(air.model||air.provider)+' — one model’s read; weigh it with the evidence above.'}); }
+  if(air&&air.text){ setRow('r-ai',{ic:'ai',state:['ai', air.tierLabel||'AI'],readHTML:fmtAIRead(air.text),data:'AI vision · '+(air.model||air.provider)+' — one model’s read; weigh it with the evidence above.'}); }
   else { setRow('r-ai',{ic:'srv',state:['srv','—'],read:'AI vision isn’t switched on yet (add a vision API key).',data:'Free: Gemini · Pro: Claude.'}); }
   // ── CONSENSUS: now that every stream is in, weigh them into the top read ──
   if((rev.connected && !rev.limited) || debunked){
