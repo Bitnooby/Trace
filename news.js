@@ -23,7 +23,7 @@ const FEEDS = [
 ];
 const OUTLETS = [...new Set(FEEDS.map(f => f.outlet))];
 const CATS = ['world', 'tech', 'business', 'science'];
-const STOP = new Set(('the a an and or but of to in on for at by from with as is are was were be been being it its this that these those will would could can may might has have had not no nor more most than then so what who how why when where amid over after before into out up down off new news say says said also against between during about your you they he she we i us our their his her them out back first two one three say latest').split(' '));
+const STOP = new Set(('the a an and or but of to in on for at by from with as is are was were be been being it its this that these those will would could can may might has have had not no nor more most than then so what who how why when where amid over after before into out up down off new news say says said also against between during about your you they he she we i us our their his her them out back first two one three say latest world video watch live study plans reveals update updates').split(' '));
 const CACHE_MS = 12 * 60 * 1000;
 let cache = { at: 0, items: [], clusters: [] };
 
@@ -60,17 +60,27 @@ function parse(xml, outlet, cat) {
 function toks(t) {
   return [...new Set((t || '').toLowerCase().replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter(w => w.length > 3 && !STOP.has(w)))];
 }
+function dedupe(items) {
+  const out = [], seenLink = new Set(), seenKey = new Set();
+  for (const it of items) {
+    const key = it.outlet + '|' + it.title.toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 50);
+    if (seenLink.has(it.link) || seenKey.has(key)) continue;
+    seenLink.add(it.link); seenKey.add(key); out.push(it);
+  }
+  return out;
+}
 function cluster(items) {
   const clusters = [];
   for (const it of items) {
     it._t = toks(it.title);
-    let best = null, bestScore = 1;            // require >=2 shared significant tokens
+    let best = null, bestShared = 0;
     for (const c of clusters) {
-      if (c.outletSet.has(it.outlet)) continue; // same outlet won't corroborate itself into a cluster seed slot
+      if (c.outletSet.has(it.outlet)) continue;
       const shared = it._t.filter(w => c.seed.has(w)).length;
-      if (shared > bestScore) { bestScore = shared; best = c; }
+      if (shared > bestShared) { bestShared = shared; best = c; }
     }
-    if (best) { best.items.push(it); best.outletSet.add(it.outlet); }
+    const minLen = best ? (Math.min(it._t.length, best.seed.size) || 1) : 1;
+    if (best && bestShared >= 2 && (bestShared >= 3 || bestShared / minLen >= 0.34)) { best.items.push(it); best.outletSet.add(it.outlet); }
     else clusters.push({ items: [it], seed: new Set(it._t), outletSet: new Set([it.outlet]) });
   }
   for (const c of clusters) {
@@ -93,7 +103,7 @@ async function fetchFeed(f) {
 }
 async function refresh() {
   const all = (await Promise.all(FEEDS.map(fetchFeed))).flat();
-  cache = { at: Date.now(), items: all, clusters: cluster(all) };
+  cache = { at: Date.now(), items: all, clusters: cluster(dedupe(all)) };
   return cache;
 }
 async function getFeed() {
