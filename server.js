@@ -792,6 +792,30 @@ app.post('/api/newsletter', async (req, res) => {
     res.json({ ok: true });
   } catch (e) { res.json({ ok: false, error: 'Try again.' }); }
 });
+let trendNowCache = { at: 0, items: [] };
+async function trendingNow() {
+  if (Date.now() - trendNowCache.at < 15 * 60 * 1000 && trendNowCache.items.length) return trendNowCache.items;
+  try {
+    const r = await fetch('https://trends.google.com/trending/rss?geo=US', { headers: { 'User-Agent': 'RelityRadar/1.0 (+https://relity.ai)' }, signal: AbortSignal.timeout(8000) });
+    if (!r.ok) return trendNowCache.items;
+    const xml = await r.text();
+    const dec = s => String(s || '').replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#0?39;|&apos;/g, "'").replace(/<[^>]+>/g, '').trim();
+    const get = (b, tag) => { const m = b.match(new RegExp('<' + tag + '>([\\s\\S]*?)</' + tag + '>', 'i')); return m ? dec(m[1]) : ''; };
+    const items = [];
+    for (const raw of xml.split(/<item>/i).slice(1)) {
+      const b = raw.split(/<\/item>/i)[0];
+      const term = get(b, 'title');
+      if (!term) continue;
+      items.push({ term, traffic: get(b, 'ht:approx_traffic'), headline: get(b, 'ht:news_item_title'), url: get(b, 'ht:news_item_url'), source: get(b, 'ht:news_item_source') });
+      if (items.length >= 8) break;
+    }
+    if (items.length) trendNowCache = { at: Date.now(), items };
+  } catch (e) { console.error('trendingNow:', e.message); }
+  return trendNowCache.items;
+}
+app.get('/api/trending-now', async (req, res) => {
+  try { res.json({ ok: true, items: await trendingNow() }); } catch { res.json({ ok: false, items: [] }); }
+});
 app.get('/api/feed', async (req, res) => {
   try {
     const data = news.peek();
