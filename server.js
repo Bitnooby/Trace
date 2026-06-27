@@ -701,6 +701,17 @@ document.querySelectorAll('.thide').forEach(function(b){
   });
 });
 </script>`;
+app.get('/sitemap.xml', async (req, res) => {
+  const base = `${req.protocol}://${req.get('host')}`;
+  const pages = ['/', '/feed', '/radar', '/trending', '/why-ai-video-detectors-fail', '/developers'];
+  let reports = [];
+  try { const t = await trendList(); reports = (t || []).map(x => x && x.id).filter(Boolean).slice(0, 40); } catch {}
+  const xml = '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+    + pages.map(u => `  <url><loc>${base}${u}</loc><changefreq>${u === '/' ? 'daily' : 'hourly'}</changefreq><priority>${u === '/' ? '1.0' : '0.7'}</priority></url>`).join('\n')
+    + (reports.length ? '\n' + reports.map(id => `  <url><loc>${base}/check/${id}</loc><changefreq>weekly</changefreq><priority>0.5</priority></url>`).join('\n') : '')
+    + '\n</urlset>';
+  res.type('application/xml').send(xml);
+});
 app.get('/trending', async (req, res) => {
   const base = `${req.protocol}://${req.get('host')}`;
   const esc = t => (t == null ? '' : String(t)).replace(/[<>&"]/g, c => ({ '<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;' }[c]));
@@ -1136,7 +1147,7 @@ app.get('/check/:id', async (req, res) => {
 
 function page(title, body, base, og, wide) {
   return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1"/><title>${title}</title><link rel="icon" type="image/svg+xml" href="/favicon.svg"/><link rel="preconnect" href="https://fonts.googleapis.com"/><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/><link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;450;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>${og||''}
+  <meta name="viewport" content="width=device-width,initial-scale=1"/><title>${title}</title><link rel="icon" type="image/svg+xml" href="/favicon.svg"/><link rel="preconnect" href="https://fonts.googleapis.com"/><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/><link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;450;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>${og||''}<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Organization","name":"Relity","url":"https://relity.ai","logo":"https://relity.ai/icon-512.png","description":"Relity shows the evidence behind images, videos and claims so you can decide — provenance, where it appears, fact-checks and AI signals. Evidence, not a verdict."},{"@type":"WebSite","name":"Relity","url":"https://relity.ai"}]}</script>
   <style>
     :root{--ink:#131722;--g:#556074;--line:#E4E9F1;--paper:#F1F4F9;--signal:#0B6E6E;--ok:#2E7D5A;--warn:#8A6A2E;--ai:#5B4BC4;--srv:#41507E;--shadow:0 1px 2px rgba(20,27,45,.05),0 14px 36px -10px rgba(20,27,45,.12)}
     *{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font-family:Inter,system-ui,sans-serif;line-height:1.5}
