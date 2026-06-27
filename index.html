@@ -51,6 +51,19 @@
   .wordmark{font-family:var(--display);font-weight:700;font-size:20px;letter-spacing:.17em;text-transform:uppercase}
   .badge{font-family:var(--mono);font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:var(--signal);background:var(--signal-wash);border:1px solid var(--signal-line);border-radius:20px;padding:2px 8px}
   .hero{max-width:540px;margin:0 auto;text-align:center;padding-bottom:64px;animation:heroIn .5s ease both}
+  .newsRail{margin:18px auto 0;max-width:540px;text-align:left;background:var(--card);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);padding:14px 16px}
+  .nr-head{display:flex;align-items:center;justify-content:space-between;gap:10px;font-family:var(--display);font-weight:700;font-size:14.5px;color:var(--ink)}
+  .nr-all{font-size:12.5px;font-weight:600;color:var(--signal);text-decoration:none;white-space:nowrap}
+  .nr-sub{font-size:12px;color:var(--graphite);margin:4px 0 8px;line-height:1.45}
+  .nr-item{display:flex;gap:9px;align-items:flex-start;padding:9px 0;border-top:1px solid var(--line);text-decoration:none;color:inherit}
+  .nr-item:hover .nr-t{color:var(--signal)}
+  .nr-pill{flex:0 0 auto;font-family:var(--display);font-weight:700;font-size:10px;color:#fff;border-radius:20px;padding:3px 8px;margin-top:1px;white-space:nowrap}
+  .nr-hi{background:var(--ok)}.nr-md{background:#3C5E8A}
+  .nr-t{font-size:13px;line-height:1.4;color:var(--ink)}
+  @media(min-width:1000px){
+    .home{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:28px;align-items:start}
+    .newsRail{margin:0;position:sticky;top:24px}
+  }
   @keyframes heroIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
   .big{font-family:var(--display);font-weight:700;font-size:clamp(46px,11vw,74px);line-height:1;letter-spacing:-.03em;margin:46px 0 0}
   .big em{font-style:normal;background:linear-gradient(120deg,var(--signal),var(--signal-bright));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
@@ -223,6 +236,7 @@
     </a>
   </header>
 
+  <div class="home">
   <section class="hero" id="submitPanel">
     <h1 class="big">Is it <em>real</em>?</h1>
     <p class="say">Paste a link, image, video, or post. Relity shows the evidence — you make the call.</p>
@@ -271,6 +285,8 @@
     <p class="tip" id="loginMsg" style="display:none;margin-top:6px"></p>
     <p class="tip" id="iosHint" style="display:none;margin-top:8px"></p>
   </section>
+  <aside class="newsRail" id="newsRail" aria-label="Scanned and corroborated news"></aside>
+  </div>
 
   <section class="panel" id="resultDash" style="display:none" aria-live="polite">
     <div class="cd">
@@ -880,6 +896,19 @@ function heroCheck(){
 }
 $('#linkBtn').addEventListener('click',heroCheck);
 $('#linkInput').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();heroCheck();}});
+(function(){
+  var el=document.getElementById('newsRail'); if(!el) return;
+  function enc(t){return String(t==null?'':t).replace(/[<>&"]/g,function(c){return {'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c];});}
+  fetch('/api/feed').then(function(r){return r.json();}).then(function(d){
+    var s=(d&&d.stories)||[];
+    if(!s.length){ el.style.display='none'; return; }
+    var rows=s.slice(0,6).map(function(x){
+      var conf=(x.n>=3)?'hi':'md';
+      return '<a class="nr-item" href="'+enc(x.link)+'" target="_blank" rel="noopener noreferrer"><span class="nr-pill nr-'+conf+'">'+x.n+' outlets</span><span class="nr-t">'+enc(x.title)+'</span></a>';
+    }).join('');
+    el.innerHTML='<div class="nr-head"><span>🗞️ Scanned &amp; corroborated</span><a class="nr-all" href="/feed">see all →</a></div><div class="nr-sub">What multiple independent newsrooms are carrying right now — breadth of reporting, not a verdict.</div>'+rows;
+  }).catch(function(){ el.style.display='none'; });
+})();
 /* if a full URL is pasted into the box, just run it */
 $('#linkInput').addEventListener('paste',()=>{ setTimeout(()=>{ const v=$('#linkInput').value.trim(); if(/^https?:\/\/\S+$/i.test(v)) checkLink(); },40); });
 function showResultDash(read, sources){

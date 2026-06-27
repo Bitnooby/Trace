@@ -778,6 +778,13 @@ app.get('/radar', async (req, res) => {
   res.send(page('Relity Radar — what’s circulating', body, base, og, true));
 });
 
+app.get('/api/feed', async (req, res) => {
+  try {
+    const data = await news.getFeed();
+    const stories = (data.clusters || []).filter(c => c.n >= 2).slice(0, 8).map(c => ({ title: c.rep.title, link: c.rep.link, n: c.n, cat: c.cat }));
+    res.json({ ok: true, stories });
+  } catch (e) { res.json({ ok: false, stories: [] }); }
+});
 app.get('/feed', async (req, res) => {
   const base = `${req.protocol}://${req.get('host')}`;
   const esc = t => (t == null ? '' : String(t)).replace(/[<>&"]/g, c => ({ '<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;' }[c]));
@@ -1000,7 +1007,7 @@ function page(title, body, base, og, wide) {
     :root{--ink:#131722;--g:#556074;--line:#E4E9F1;--paper:#F1F4F9;--signal:#0B6E6E;--ok:#2E7D5A;--warn:#8A6A2E;--ai:#5B4BC4;--srv:#41507E;--shadow:0 1px 2px rgba(20,27,45,.05),0 14px 36px -10px rgba(20,27,45,.12)}
     *{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font-family:Inter,system-ui,sans-serif;line-height:1.5}
     .w{max-width:560px;margin:0 auto;padding:30px 20px 60px}
-    .brand{display:flex;align-items:center;gap:9px;font-family:'Space Grotesk',system-ui,sans-serif;font-weight:700;letter-spacing:.16em;text-transform:uppercase;font-size:15px;color:var(--signal)}
+    .brand{display:flex;align-items:center;gap:9px;font-family:'Space Grotesk',system-ui,sans-serif;font-weight:700;letter-spacing:.16em;text-transform:uppercase;font-size:15px;color:var(--signal);text-decoration:none;transition:opacity .12s ease}.brand:hover{opacity:.65}
     .g{width:22px;height:22px;border-radius:6px;background:linear-gradient(150deg,#0B6E6E,#13A8A8);display:inline-flex;align-items:center;justify-content:center;vertical-align:middle}
     .g svg{width:15px;height:15px}
     .hero{display:block;width:100%;max-height:440px;object-fit:contain;background:#eef2f6;border-radius:14px;margin:18px 0;border:1px solid var(--line)}
@@ -1147,7 +1154,7 @@ function page(title, body, base, og, wide) {
     .article-cta a{color:var(--signal);font-weight:600;text-decoration:none}
     .article-src li{font-size:13.5px;margin:0 0 6px}
   </style></head><body><div class="w${wide ? ' wide' : ''}">
-    <div class="brand"><span class="g"><svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg"><g stroke="#fff" stroke-width="8" stroke-linecap="round"><line x1="32" y1="34" x2="50" y2="52"/><line x1="50" y1="52" x2="70" y2="36"/><line x1="50" y1="52" x2="52" y2="78"/></g><circle cx="32" cy="34" r="8" fill="#fff"/><circle cx="70" cy="36" r="8" fill="#fff"/><circle cx="52" cy="78" r="8" fill="#fff"/><circle cx="50" cy="52" r="9.5" fill="#fff"/></svg></span> Relity</div>${body}
+    <a class="brand" href="${base}/" title="Back to home"><span class="g"><svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg"><g stroke="#fff" stroke-width="8" stroke-linecap="round"><line x1="32" y1="34" x2="50" y2="52"/><line x1="50" y1="52" x2="70" y2="36"/><line x1="50" y1="52" x2="52" y2="78"/></g><circle cx="32" cy="34" r="8" fill="#fff"/><circle cx="70" cy="36" r="8" fill="#fff"/><circle cx="52" cy="78" r="8" fill="#fff"/><circle cx="50" cy="52" r="9.5" fill="#fff"/></svg></span> Relity</a>${body}
   </div></body></html>`;
 }
 
