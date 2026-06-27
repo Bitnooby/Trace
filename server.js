@@ -641,6 +641,7 @@ function computeConsensus(prov, reach, debunked, count, examined, vintage, misma
 }
 
 const memTrend = [];
+const memNL = new Map();
 async function trendPush(entry){
   try{ memTrend.unshift(entry); if(memTrend.length>60) memTrend.length=60; }catch{}
   if(redisOn){ try{ await redisCmd(['LPUSH','relity:trend',JSON.stringify(entry)]); await redisCmd(['LTRIM','relity:trend','0','59']); }catch(e){ console.error('trendPush:',e.message); } }
@@ -778,6 +779,19 @@ app.get('/radar', async (req, res) => {
   res.send(page('Relity Radar — what’s circulating', body, base, og, true));
 });
 
+app.post('/api/newsletter', async (req, res) => {
+  try {
+    const email = String((req.body && req.body.email) || '').trim().toLowerCase();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email) || email.length > 160) return res.json({ ok: false, error: 'Enter a valid email.' });
+    let cats = (req.body && Array.isArray(req.body.cats)) ? req.body.cats : [];
+    cats = cats.filter(c => ['general', 'world', 'tech', 'business', 'science'].includes(c)).slice(0, 5);
+    if (!cats.length) cats = ['general'];
+    const rec = JSON.stringify({ cats, at: Date.now() });
+    if (redisOn) { try { await redisCmd(['HSET', 'relity:nl:subs', email, rec]); } catch (e) { console.error('newsletter:', e.message); } }
+    else { memNL.set(email, rec); }
+    res.json({ ok: true });
+  } catch (e) { res.json({ ok: false, error: 'Try again.' }); }
+});
 app.get('/api/feed', async (req, res) => {
   try {
     const data = news.peek();
