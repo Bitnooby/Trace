@@ -1079,6 +1079,8 @@ app.get('/check/:id', async (req, res) => {
   const aiConcern = aiLeanOf(r.aiRead && r.aiRead.text);
   const rd = computeConsensus(prov, reachFlag, debunked, reachOK ? (r.reverse.count || 0) : 0, examined, vintage, mismatchYear, aiConcern);
   const rbCls = { ai: 'rb-red', debunk: 'rb-red', verified: 'rb-green', photo: 'rb-blue', scrutinize: 'rb-amber' }[rd.level] || 'rb-amber';
+  const xText = `🔎 Relity read: "${rd.badge}" — evidence, not a verdict. See what it's based on, and decide for yourself:`;
+  const xShare = `https://x.com/intent/tweet?text=${encodeURIComponent(xText)}&url=${encodeURIComponent(base + '/check/' + r.id)}`;
   const banner = `<div class="rb ${rbCls}"><div class="rb-eye">${esc(rd.eyebrow||'')}</div><div class="rb-b">${esc(rd.badge)}</div><div class="rb-l">${esc(rd.line)}</div></div>`;
 
   const SC = { green: '#57A07D', blue: '#6E91C2', amber: '#C7A24E', red: '#C16A57', gray: '#9aa7b2', teal: '#2E8F8F' };
@@ -1118,6 +1120,7 @@ app.get('/check/:id', async (req, res) => {
     <div class="rpt-foot">
       <a class="cta" href="${base}/">Check your own image →</a>
       <button id="cardBtn" class="cta cta-ghost" style="margin-top:10px;cursor:pointer">📸 Save a share card</button>
+      <a class="cta cta-ghost" href="${xShare}" target="_blank" rel="noopener noreferrer" style="margin-top:10px;text-decoration:none">Share on X →</a>
       <canvas id="rcard" width="1200" height="630" style="display:none"></canvas>
     </div>
     <script>
