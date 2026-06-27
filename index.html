@@ -899,7 +899,8 @@ $('#linkInput').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefa
 (function(){
   var el=document.getElementById('newsRail'); if(!el) return;
   function enc(t){return String(t==null?'':t).replace(/[<>&"]/g,function(c){return {'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c];});}
-  fetch('/api/feed').then(function(r){return r.json();}).then(function(d){
+  var ctl=new AbortController(),to=setTimeout(function(){ctl.abort();},6000);
+  fetch('/api/feed',{signal:ctl.signal}).then(function(r){clearTimeout(to);return r.json();}).then(function(d){
     var s=(d&&d.stories)||[];
     if(!s.length){ el.style.display='none'; return; }
     var rows=s.slice(0,6).map(function(x){

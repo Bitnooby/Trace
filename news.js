@@ -110,7 +110,11 @@ async function getFeed() {
   if (Date.now() - cache.at > CACHE_MS || !cache.clusters.length) { try { await refresh(); } catch { /* serve stale */ } }
   return cache;
 }
+function peek() {
+  if (Date.now() - cache.at > CACHE_MS) refresh().catch(() => {}); // refresh in the background; never block the caller
+  return cache;
+}
 module.exports = function news() {
   refresh().catch(() => {});                   // warm cache at boot
-  return { getFeed, refresh, parse, cluster, FEEDS, OUTLETS, CATS };
+  return { getFeed, peek, refresh, parse, cluster, FEEDS, OUTLETS, CATS };
 };

@@ -780,7 +780,7 @@ app.get('/radar', async (req, res) => {
 
 app.get('/api/feed', async (req, res) => {
   try {
-    const data = await news.getFeed();
+    const data = news.peek();
     const stories = (data.clusters || []).filter(c => c.n >= 2).slice(0, 8).map(c => ({ title: c.rep.title, link: c.rep.link, n: c.n, cat: c.cat }));
     res.json({ ok: true, stories });
   } catch (e) { res.json({ ok: false, stories: [] }); }
