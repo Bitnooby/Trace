@@ -1275,4 +1275,17 @@ app.get('/unsubscribe', async (req, res) => {
   const body = `<div class="rad"><div class="rad-head"><div class="rad-eyebrow">Relity</div><h1 class="rad-h1">${ok ? 'You’re unsubscribed' : 'Link not valid'}</h1><p class="rad-sub">${ok ? 'You won’t receive the newsletter anymore. Changed your mind? Re-subscribe anytime from the home page.' : 'That unsubscribe link looks invalid or expired — no changes were made.'}</p></div><a class="cta" href="${base}/" style="max-width:320px;margin:8px auto 0">Back to Relity →</a></div>`;
   res.send(page('Relity — Unsubscribe', body, base, null, true));
 });
+app.get('/api/newsletter/test', async (req, res) => {
+  if (!isAdmin(req)) return res.status(403).json({ ok: false, error: 'not authorized (open /trending?key=YOUR_ADMIN_KEY once to unlock owner mode)' });
+  const to = String(req.query.to || '').trim().toLowerCase();
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(to)) return res.json({ ok: false, error: 'add ?to=your@email' });
+  if (!billing.sendMail) return res.json({ ok: false, error: 'email not configured (RESEND_API_KEY)' });
+  const cats = String(req.query.cats || 'general').split(',').map(s => s.trim()).filter(Boolean);
+  const use = cats.length ? cats : ['general'];
+  const stories = nlStoriesFor(use);
+  if (!stories.length) return res.json({ ok: false, error: 'no corroborated stories cached yet — try again in a minute' });
+  const unsub = `${BASE}/unsubscribe?e=${encodeURIComponent(to)}&t=${nlToken(to)}`;
+  try { await billing.sendMail(to, 'Relity — sample corroborated-news digest', nlEmailHtml(stories, use, unsub)); res.json({ ok: true, sent: 1, to, stories: stories.length }); }
+  catch (e) { res.json({ ok: false, error: String(e.message || e).slice(0, 200) }); }
+});
 app.listen(PORT, () => { console.log(`Relity running on http://localhost:${PORT}`); telegram.register(); setInterval(nlTick, 5 * 60 * 1000); });
