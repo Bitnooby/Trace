@@ -1217,4 +1217,62 @@ app.get('/privacy', (req, res) => {
 </main></body></html>`);
 });
 
-app.listen(PORT, () => { console.log(`Relity running on http://localhost:${PORT}`); telegram.register(); });
+// ---- newsletter: scheduled corroborated-news email digest ----
+const BASE = (process.env.RELITY_URL || 'https://relity.ai').replace(/\/$/, '');
+const NL_SECRET = process.env.RELITY_SECRET || 'relity-dev';
+const NL_HOUR = Number.isFinite(+process.env.NEWSLETTER_HOUR) ? +process.env.NEWSLETTER_HOUR : 14; // UTC hour
+let nlLastSent = '';
+const escH = s => String(s == null ? '' : s).replace(/[<>&"]/g, c => ({ '<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;' }[c]));
+function nlToken(email) { return crypto.createHmac('sha256', NL_SECRET).update('nl:' + email).digest('hex').slice(0, 24); }
+function nlStoriesFor(cats) {
+  const data = news.peek(); let cl = (data.clusters || []).filter(c => c.n >= 2);
+  if (!cats.includes('general')) cl = cl.filter(c => cats.includes(c.cat));
+  return cl.slice(0, 10).map(c => ({ title: c.rep.title, link: c.rep.link, n: c.n, cat: c.cat }));
+}
+function nlEmailHtml(stories, cats, unsubUrl) {
+  const items = stories.map(s => `<tr><td style="padding:11px 0;border-top:1px solid #E4E9F1"><span style="display:inline-block;background:${s.n>=3?'#2E7D5A':'#3C5E8A'};color:#fff;font-size:11px;font-weight:700;border-radius:20px;padding:2px 8px">${s.n} outlets</span> <a href="${escH(s.link)}" style="color:#131722;text-decoration:none;font-weight:600;font-size:15px">${escH(s.title)}</a></td></tr>`).join('');
+  const scope = cats.includes('general') ? 'across the major newsrooms' : 'in ' + escH(cats.join(', '));
+  return `<div style="font-family:system-ui,Segoe UI,Arial,sans-serif;max-width:560px;margin:auto;padding:24px;color:#131722"><div style="font-weight:700;font-size:20px;color:#0B6E6E">Relity — Corroborated news</div><div style="color:#556074;font-size:13px;margin:4px 0 16px">What multiple independent newsrooms are carrying right now ${scope}. Breadth of reporting, not a verdict — open any story to read and decide.</div><table style="width:100%;border-collapse:collapse">${items}</table><div style="margin-top:18px"><a href="${BASE}/feed" style="color:#0B6E6E;font-weight:600;text-decoration:none">See the full feed →</a></div><div style="color:#8A95A4;font-size:11px;margin-top:22px;border-top:1px solid #E4E9F1;padding-top:12px">You subscribed at relity.ai. <a href="${unsubUrl}" style="color:#8A95A4">Unsubscribe</a>.</div></div>`;
+}
+async function nlSubsAll() {
+  if (redisOn) { try { const v = await redisCmd(['HGETALL', 'relity:nl:subs']); if (Array.isArray(v)) { const out = []; for (let i = 0; i < v.length; i += 2) out.push([v[i], v[i + 1]]); return out; } if (v && typeof v === 'object') return Object.entries(v); } catch (e) { console.error('nlSubsAll:', e.message); } }
+  return [...memNL.entries()];
+}
+async function sendNewsletter() {
+  if (!billing.sendMail) return { sent: 0 };
+  let subs = []; try { subs = await nlSubsAll(); } catch { return { sent: 0 }; }
+  let sent = 0;
+  for (const [email, recRaw] of subs) {
+    let cats = ['general']; try { const r = JSON.parse(recRaw); if (r && Array.isArray(r.cats) && r.cats.length) cats = r.cats; } catch {}
+    const stories = nlStoriesFor(cats);
+    if (!stories.length) continue;
+    const unsub = `${BASE}/unsubscribe?e=${encodeURIComponent(email)}&t=${nlToken(email)}`;
+    try { await billing.sendMail(email, 'Relity — corroborated news today', nlEmailHtml(stories, cats, unsub)); sent++; } catch (e) { console.error('nl send:', e.message); }
+    await new Promise(r => setTimeout(r, 150));
+  }
+  console.log('newsletter: sent ' + sent + '/' + subs.length);
+  return { sent, total: subs.length };
+}
+async function nlTick() {
+  try {
+    const now = new Date();
+    if (now.getUTCHours() !== NL_HOUR) return;
+    const today = now.toISOString().slice(0, 10);
+    if (redisOn) { try { if (await redisCmd(['GET', 'relity:nl:lastsent']) === today) return; await redisCmd(['SET', 'relity:nl:lastsent', today]); } catch {} }
+    if (nlLastSent === today) return;
+    nlLastSent = today;
+    await sendNewsletter();
+  } catch (e) { console.error('nlTick:', e.message); }
+}
+app.get('/unsubscribe', async (req, res) => {
+  const base = `${req.protocol}://${req.get('host')}`;
+  const email = String(req.query.e || '').trim().toLowerCase();
+  const t = String(req.query.t || '');
+  let ok = false;
+  if (email && t && t === nlToken(email)) {
+    if (redisOn) { try { await redisCmd(['HDEL', 'relity:nl:subs', email]); ok = true; } catch {} } else { memNL.delete(email); ok = true; }
+  }
+  const body = `<div class="rad"><div class="rad-head"><div class="rad-eyebrow">Relity</div><h1 class="rad-h1">${ok ? 'You’re unsubscribed' : 'Link not valid'}</h1><p class="rad-sub">${ok ? 'You won’t receive the newsletter anymore. Changed your mind? Re-subscribe anytime from the home page.' : 'That unsubscribe link looks invalid or expired — no changes were made.'}</p></div><a class="cta" href="${base}/" style="max-width:320px;margin:8px auto 0">Back to Relity →</a></div>`;
+  res.send(page('Relity — Unsubscribe', body, base, null, true));
+});
+app.listen(PORT, () => { console.log(`Relity running on http://localhost:${PORT}`); telegram.register(); setInterval(nlTick, 5 * 60 * 1000); });
