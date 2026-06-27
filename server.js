@@ -1316,4 +1316,56 @@ app.get('/api/newsletter/test', async (req, res) => {
   try { await billing.sendMail(to, 'Relity — sample corroborated-news digest', nlEmailHtml(stories, use, unsub, trends)); res.json({ ok: true, sent: 1, to, stories: stories.length }); }
   catch (e) { res.json({ ok: false, error: String(e.message || e).slice(0, 200) }); }
 });
-app.listen(PORT, () => { console.log(`Relity running on http://localhost:${PORT}`); telegram.register(); setInterval(nlTick, 5 * 60 * 1000); });
+// ---- Pro: watch a claim, alert when a fact-check/debunk appears ----
+const memWatch = new Map();
+function watchId(email, claim) { return crypto.createHmac('sha256', NL_SECRET).update(email + '|' + claim.toLowerCase()).digest('hex').slice(0, 16); }
+async function watchAdd(rec) { const v = JSON.stringify(rec); if (redisOn) { try { await redisCmd(['HSET', 'relity:watches', rec.id, v]); return; } catch (e) { console.error('watchAdd:', e.message); } } memWatch.set(rec.id, v); }
+async function watchAll() { if (redisOn) { try { const v = await redisCmd(['HGETALL', 'relity:watches']); if (Array.isArray(v)) { const o = []; for (let i = 0; i < v.length; i += 2) o.push([v[i], v[i + 1]]); return o; } if (v && typeof v === 'object') return Object.entries(v); } catch (e) { console.error('watchAll:', e.message); } } return [...memWatch.entries()]; }
+async function watchDel(id) { if (redisOn) { try { await redisCmd(['HDEL', 'relity:watches', id]); return; } catch {} } memWatch.delete(id); }
+app.post('/api/watch', async (req, res) => {
+  const acct = await billing.tierOf(req);
+  if (acct.tier !== 'pro' || !acct.email) return res.json({ ok: false, error: 'Watching is a Pro feature — upgrade to set alerts.' });
+  const claim = String((req.body && req.body.claim) || '').trim().slice(0, 300);
+  if (claim.length < 8) return res.json({ ok: false, error: 'That is too short to watch.' });
+  let baseFC = 0; try { const fc = await factCheck([claim]); baseFC = ((fc && fc.claims) || []).length; } catch {}
+  await watchAdd({ id: watchId(acct.email, claim), email: acct.email, claim, baseFC, at: Date.now(), notified: false });
+  res.json({ ok: true, alreadyFlagged: baseFC > 0 });
+});
+app.get('/api/watches', async (req, res) => {
+  const acct = await billing.tierOf(req);
+  if (acct.tier !== 'pro' || !acct.email) return res.json({ ok: false, items: [] });
+  const all = await watchAll();
+  const mine = all.map(([k, v]) => { try { return JSON.parse(v); } catch { return null; } }).filter(w => w && w.email === acct.email).map(w => ({ id: w.id, claim: w.claim, at: w.at, notified: !!w.notified }));
+  res.json({ ok: true, items: mine });
+});
+app.post('/api/watch/remove', async (req, res) => {
+  const acct = await billing.tierOf(req);
+  if (acct.tier !== 'pro') return res.json({ ok: false });
+  const id = String((req.body && req.body.id) || '');
+  const all = await watchAll(); const found = all.find(([k]) => k === id);
+  if (found) { try { const w = JSON.parse(found[1]); if (w.email === acct.email) await watchDel(id); } catch {} }
+  res.json({ ok: true });
+});
+async function watchTick() {
+  if (!billing.sendMail) return;
+  let all = []; try { all = await watchAll(); } catch { return; }
+  let checked = 0;
+  for (const [k, v] of all) {
+    let w; try { w = JSON.parse(v); } catch { continue; }
+    if (!w || w.notified) continue;
+    if (checked >= 40) break;
+    checked++;
+    try {
+      const fc = await factCheck([w.claim]);
+      const claims = (fc && fc.claims) || [];
+      if (claims.length > (w.baseFC || 0)) {
+        const top = claims[0] || {};
+        const html = `<div style="font-family:system-ui,Segoe UI,Arial,sans-serif;max-width:520px;margin:auto;padding:24px;color:#131722"><div style="font-weight:700;font-size:18px;color:#A14A38">🔔 A claim you're watching was just fact-checked</div><div style="font-size:14px;color:#556074;margin:8px 0 12px">You asked Relity to watch:</div><div style="font-style:italic;font-size:15px;border-left:3px solid #E4E9F1;padding-left:12px;margin-bottom:14px">${escH(w.claim)}</div><div style="font-size:14px"><b>${escH(top.publisher || 'A fact-checker')}</b> rated it <b>${escH(top.rating || '—')}</b>${top.claim ? ' — "' + escH(String(top.claim).slice(0, 160)) + '"' : ''}.</div>${top.url ? `<div style="margin-top:12px"><a href="${escH(top.url)}" style="color:#0B6E6E;font-weight:600;text-decoration:none">Read the fact-check →</a></div>` : ''}<div style="color:#8A95A4;font-size:11px;margin-top:20px;border-top:1px solid #E4E9F1;padding-top:12px">Evidence, not a verdict — read it and decide. You set this Pro watch at relity.ai.</div></div>`;
+        try { await billing.sendMail(w.email, '🔔 A claim you are watching was fact-checked', html); } catch (e) { console.error('watch mail:', e.message); }
+        w.notified = true; await watchAdd(w);
+      }
+    } catch (e) { console.error('watchTick item:', e.message); }
+    await new Promise(r => setTimeout(r, 200));
+  }
+}
+app.listen(PORT, () => { console.log(`Relity running on http://localhost:${PORT}`); telegram.register(); setInterval(nlTick, 5 * 60 * 1000); setInterval(watchTick, 3 * 60 * 60 * 1000); });

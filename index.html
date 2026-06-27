@@ -87,6 +87,9 @@
   .tn-term{display:block;font-family:var(--display);font-weight:700;font-size:12px;text-transform:capitalize;color:var(--ink)}
   .tn-head{font-size:12.5px;color:var(--graphite);line-height:1.4;margin-top:2px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
   .tn-src{display:block;font-family:var(--mono);font-size:10.5px;color:#8A95A4;margin-top:3px}
+  .watch-btn{display:block;width:100%;margin-top:12px;background:transparent;border:1px dashed var(--warn);color:var(--warn);border-radius:11px;padding:10px;font-family:var(--display);font-weight:600;font-size:13px;cursor:pointer;transition:background .12s ease}
+  .watch-btn:hover{background:var(--warn-wash)}
+  .watch-btn:disabled{cursor:default;opacity:.9;border-style:solid}
   @media(min-width:1000px){
     .home{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:28px;align-items:start}
     .rightcol{position:sticky;top:24px}
@@ -1056,10 +1059,19 @@ async function checkClaim(){
   try{
     const r=await fetch(base+'/api/check-claim',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:t})});
     const j=await r.json();
-    if(j&&j.read){ showResultDash(j.read,j.sources); }
+    if(j&&j.read){ showResultDash(j.read,j.sources); if(window.__pro){ var sd=document.getElementById('cdSide'); if(sd){ sd.insertAdjacentHTML('beforeend','<button class="watch-btn" id="watchBtn" type="button">🔔 Watch — email me if it gets debunked</button>'); var wb=document.getElementById('watchBtn'); if(wb) wb.addEventListener('click',function(){ watchClaim(t,wb); }); } } }
     else out.innerHTML='<p class="tip">'+esc((j&&j.error)||'Could not check that claim.')+'</p>';
   }catch(_){ out.innerHTML='<p class="tip">Could not reach the server.</p>'; }
   finally{ if(btn){ btn.textContent=lab; btn.disabled=false; } try{refreshMe();}catch(_){} }
+}
+async function watchClaim(claim, btn){
+  const base=apiBase(); if(!base) return;
+  if(btn){ btn.disabled=true; btn.textContent='Setting up alert…'; }
+  try{
+    const r=await fetch(base+'/api/watch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({claim:claim})});
+    const j=await r.json();
+    if(btn){ if(j&&j.ok){ btn.textContent = j.alreadyFlagged ? '🔔 Watching · already fact-checked (see above)' : '🔔 Watching — we will email you if it is debunked'; } else { btn.textContent=(j&&j.error)||'Could not set the watch'; btn.disabled=false; } }
+  }catch(_){ if(btn){ btn.textContent='Could not set the watch'; btn.disabled=false; } }
 }
 /* visible claim box removed — the main box handles claims/questions; #claimInput kept as a hidden relay */
 if($('#moreToggle')){ $('#moreToggle').addEventListener('click',function(){ var m=$('#moreOpts'); if(!m) return; var open=m.style.display!=='none'; m.style.display=open?'none':'block'; this.textContent=open?'+ Add the caption it was posted with (optional)':'− Hide caption'; }); }
@@ -1133,7 +1145,7 @@ async function refreshMe(){
   const base=apiBase(); const nav=$('#acctNav'); const el=$('#acctLine'); if(!base) return;
   try{
     const m=await (await fetch(base+'/api/me')).json();
-    GCID=m.googleClientId||'';
+    GCID=m.googleClientId||''; window.__pro=(m.tier==='pro');
     if(m.tier==='pro'){
       if(nav) nav.innerHTML=`<span class="acct-pro">✓ Pro</span><a href="#" class="acct-link" id="outBtn">Log out</a>`;
       if(el) el.innerHTML = m.email?`Signed in · <span style="opacity:.7">${esc(m.email)}</span>`:'';
