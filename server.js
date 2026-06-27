@@ -304,6 +304,7 @@ app.post('/api/publish', upload.single('image'), async (req, res) => {
 
     const report = { id, sha256: sha, createdAt: Date.now(), findings, read, reverse, reverseCached, fact, aiRead, prov: (req.body.prov || null), claim: claimOut, hasImage: !!req.file };
     await putReport(id, report);
+    if (acct.tier === 'pro' && acct.email) { try { const ch = consensusOf(report); histPush(acct.email, { id, title: clip(((claimOut && (claimOut.title || claimOut.description)) || 'Image check'), 90), badge: ch ? ch.badge : '', level: ch ? ch.level : '', at: Date.now() }).catch(() => {}); } catch (e) {} }
     try {
       if (req.file && claimOut && reverse && reverse.connected && !reverse.limited && !reverse.degraded && (reverse.count||0) >= 5) {
         const trd = consensusOf(report);
@@ -641,6 +642,17 @@ function computeConsensus(prov, reach, debunked, count, examined, vintage, misma
 }
 
 const memTrend = [];
+const memHist = new Map();
+async function histPush(email, entry) {
+  const k = `relity:hist:${String(email).toLowerCase()}`;
+  if (redisOn) { try { await redisCmd(['LPUSH', k, JSON.stringify(entry)]); await redisCmd(['LTRIM', k, '0', '59']); return; } catch (e) { console.error('histPush:', e.message); } }
+  const a = memHist.get(k) || []; a.unshift(entry); if (a.length > 60) a.length = 60; memHist.set(k, a);
+}
+async function histList(email) {
+  const k = `relity:hist:${String(email).toLowerCase()}`;
+  if (redisOn) { try { const v = await redisCmd(['LRANGE', k, '0', '59']); if (Array.isArray(v)) return v.map(x => { try { return typeof x === 'string' ? JSON.parse(x) : x; } catch { return null; } }).filter(Boolean); } catch (e) { console.error('histList:', e.message); } }
+  return (memHist.get(k) || []).slice();
+}
 const memNL = new Map();
 async function trendPush(entry){
   try{ memTrend.unshift(entry); if(memTrend.length>60) memTrend.length=60; }catch{}
@@ -846,6 +858,24 @@ app.get('/feed', async (req, res) => {
   const body = `<div class="fd"><div class="fd-head"><div class="rad-eyebrow">Relity News Radar</div><h1 class="rad-h1">Corroborated news</h1><p class="rad-sub">Stories ranked by how many independent newsrooms are carrying them right now. <b>Corroboration is breadth of reporting, not proof of truth</b> — it shows how widely a story is being reported, then you read it yourself. Tracking ${esc(outlets)}.</p><div class="fd-tabs">${tabs}</div></div>${corrob.length?`<div class="fd-list">${corrob.slice(0,40).map(card).join('')}</div>`:(hasAny?'<p class="fd-note">No multi-outlet stories in this category right now — see single-source below.</p>':'')}${single.length?`<div class="fd-subhead">Reported by a single outlet so far</div><div class="fd-list fd-list-dim">${single.map(card).join('')}</div>`:''}${!hasAny?'<p class="rad-empty">The feed is warming up — refresh in a moment.</p>':''}<div class="rad-foot">Refreshes every few minutes. <a href="${base}/radar">What’s circulating →</a></div></div>`;
   const og = `\n    <meta property="og:title" content="Relity News Radar — corroborated news" />\n    <meta property="og:description" content="News ranked by how many independent newsrooms carry each story. Corroboration is breadth of reporting, not proof — evidence, not a verdict." />\n    <meta property="og:type" content="website" />\n    <meta property="og:image" content="${base}/og-card.png" />\n    <meta name="twitter:card" content="summary_large_image" />`;
   res.send(page('Relity News Radar — corroborated news', body, base, og, true));
+});
+
+app.get('/history', async (req, res) => {
+  const base = `${req.protocol}://${req.get('host')}`;
+  const esc = t => (t == null ? '' : String(t)).replace(/[<>&"]/g, c => ({ '<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;' }[c]));
+  const acct = await billing.tierOf(req);
+  let body;
+  if (!acct.email) {
+    body = `<div class="rad"><div class="rad-head"><div class="rad-eyebrow">Relity</div><h1 class="rad-h1">Your check history</h1><p class="rad-sub">Sign in to see the checks you've run — history is saved for Pro members.</p></div><a class="cta" href="${base}/" style="max-width:320px;margin:8px auto 0">Back to Relity →</a></div>`;
+  } else if (acct.tier !== 'pro') {
+    body = `<div class="rad"><div class="rad-head"><div class="rad-eyebrow">Relity</div><h1 class="rad-h1">Your check history</h1><p class="rad-sub">Saving your checks is a Pro feature — upgrade and every check you run is kept here to revisit.</p></div><a class="cta" href="${base}/" style="max-width:320px;margin:8px auto 0">Go Pro →</a></div>`;
+  } else {
+    let items = []; try { items = await histList(acct.email); } catch (e) { items = []; }
+    const DOT = { debunk:'#A14A38', ai:'#A14A38', verified:'#2E7D5A', photo:'#3C5E8A', scrutinize:'#8A6A2E' };
+    const rows = items.map(it => `<a class="rad-item" href="${base}/check/${esc(it.id)}"><span class="rad-idot" style="background:${DOT[it.level] || '#8A95A4'}"></span><span class="rad-cap">${esc(it.title || 'Check')}</span><span class="rad-src">${esc(it.badge || '')}${it.at ? ' · ' + new Date(it.at).toISOString().slice(0, 10) : ''}</span></a>`).join('');
+    body = `<div class="rad"><div class="rad-head"><div class="rad-eyebrow">Relity · Pro</div><h1 class="rad-h1">Your check history</h1><p class="rad-sub">Every check you've run, saved to your account · <span style="opacity:.7">${esc(acct.email)}</span></p></div>${items.length ? `<div class="rad-feed">${rows}</div>` : '<p class="rad-empty">No checks yet — run one and it shows up here.</p>'}<a class="cta" href="${base}/" style="max-width:320px;margin:18px auto 0">Check something →</a></div>`;
+  }
+  res.send(page('Relity — Your history', body, base, null, true));
 });
 
 app.get('/why-ai-video-detectors-fail', (req, res) => {

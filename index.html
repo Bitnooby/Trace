@@ -1147,7 +1147,7 @@ async function refreshMe(){
     const m=await (await fetch(base+'/api/me')).json();
     GCID=m.googleClientId||''; window.__pro=(m.tier==='pro');
     if(m.tier==='pro'){
-      if(nav) nav.innerHTML=`<span class="acct-pro">✓ Pro</span><a href="#" class="acct-link" id="outBtn">Log out</a>`;
+      if(nav) nav.innerHTML=`<span class="acct-pro">✓ Pro</span><a href="/history" class="acct-link">History</a><a href="#" class="acct-link" id="outBtn">Log out</a>`;
       if(el) el.innerHTML = m.email?`Signed in · <span style="opacity:.7">${esc(m.email)}</span>`:'';
     } else {
       const io = m.email ? `<a href="#" class="acct-link" id="outBtn">Log out</a>` : `<a href="#" class="acct-link" id="inBtn">Log in</a>`;
