@@ -311,7 +311,7 @@ app.post('/api/publish', upload.single('image'), async (req, res) => {
         trendPush({ id, at: Date.now(), cap: clip((claimOut.title||claimOut.description||''),140), src: claimOut.source||'', n: reverse.count||0, badge: trd?trd.badge:'', level: trd?trd.level:'scrutinize' }).catch(()=>{});
       }
     } catch (e) { /* trending is best-effort, never block a check */ }
-    res.json({ id, reverse, fact, claim: claimOut, aiRead, quota: { used: await quotaGet(rid), limit, tier: acct.tier } });
+    res.json({ id, reverse, fact, claim: claimOut, aiRead, synthHtml: synthHtml(buildSynthesis(report)), quota: { used: await quotaGet(rid), limit, tier: acct.tier } });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -689,6 +689,71 @@ function consensusOf(r){
   const aiConcern = aiLeanOf(r.aiRead && r.aiRead.text);
   return computeConsensus(prov, reachFlag, debunked, reachOK ? (r.reverse.count || 0) : 0, examined, vintage, mismatchYear, aiConcern);
 }
+/* ---------- "What you're looking at": one plain-language synthesis of every signal ----------
+   Reuses the signals already gathered (no extra AI call). Free spread proxy = reverse-image
+   trail + fact-check record, never a paid social API. Evidence, not a verdict. */
+function buildSynthesis(r){
+  if(!r) return null;
+  const claim = r.claim || {};
+  const capText = String(claim.title || claim.description || '').trim();
+  const source = String(claim.source || '').trim();
+  let seeing = '';
+  if(capText){
+    seeing = (source ? 'Posted on ' + source + '. ' : '') + 'The caption claims: “' + clip(capText, 240) + '”';
+  }
+  // AI-material read, pulled from the vision layer's "READ: <label> · <N>%" line
+  let ai = null;
+  const t = String((r.aiRead && r.aiRead.text) || '');
+  const m = t.match(/READ:\s*([^\n·•]+?)\s*[·•]\s*(\d{1,3})\s*%/i);
+  if(m){
+    const lean = aiLeanOf(t);
+    const line = lean==='ai' ? 'The closest AI look reads this image as likely AI-generated.'
+      : lean==='edited' ? 'The closest AI look flagged possible signs of editing.'
+      : lean==='real' ? 'The closest AI look found signals consistent with a real photo — though a single clean frame can’t rule out AI video.'
+      : 'The closest AI look was inconclusive on this frame.';
+    ai = { label: m[1].trim(), pct: parseInt(m[2],10), lean: lean || 'inconclusive', line };
+  }
+  // free spread proxy: where the image turns up + whether a fact-check is on record
+  const reachOK = !!(r.reverse && r.reverse.connected && !r.reverse.degraded && !r.reverse.limited);
+  const di = reachOK ? interpretDomains(r.reverse.domains) : { flag:null, found:false, examined:false };
+  const count = reachOK ? (r.reverse.count || 0) : 0;
+  const debunked = !!(r.fact && r.fact.connected && (r.fact.claims || []).length);
+  let spread = '';
+  if(!reachOK){
+    spread = (r.reverse && r.reverse.limited) ? 'Live web cross-check wasn’t run this time (free daily limit reached).' : '';
+  } else if(count > 0){
+    spread = 'This image is already circulating online — seen across ' + spreadPhrase(count) + '.';
+  } else {
+    spread = 'No other public copies of this image surfaced in the web check.';
+  }
+  let corrob = '';
+  if(debunked){
+    corrob = 'Fact-checkers have already addressed this — read their finding below.';
+  } else if(di.flag === 'news'){
+    corrob = 'It appears on credible news outlets, consistent with a real news image — still verify the exact context.';
+  } else if(di.flag === 'ai'){
+    corrob = 'It turns up on AI-image sites — a hint the picture itself may be AI-made.';
+  } else if(reachOK){
+    corrob = 'No credible newsroom and no fact-check surfaced for this — not proof either way, but a genuine news event usually shows up in reporting.';
+  }
+  if(!seeing && !ai && !spread && !corrob) return null;
+  return { seeing, ai, spread, corrob, close: 'This is evidence, not a verdict — weigh the signals and decide for yourself.' };
+}
+function synthHtml(s){
+  if(!s) return '';
+  const LC = { ai:'#C16A57', edited:'#C7A24E', real:'#57A07D', inconclusive:'#9aa7b2' };
+  let pill = '';
+  if(s.ai){ pill = '<span style="display:inline-block;padding:3px 10px;border-radius:999px;font:600 12.5px/1.5 var(--display,system-ui,sans-serif);color:#fff;background:'+(LC[s.ai.lean]||LC.inconclusive)+';white-space:nowrap">'+esc(s.ai.label)+' · '+s.ai.pct+'%</span>'; }
+  const row = (label, txt) => txt ? '<div style="margin:8px 0 0;font-size:14.5px;line-height:1.55;color:var(--graphite,#3b4a57)"><b style="font-family:var(--display,system-ui,sans-serif);color:var(--ink,#1b2a36)">'+label+'</b> '+esc(txt)+'</div>' : '';
+  let inner = '';
+  if(s.seeing) inner += '<div style="margin:0 0 6px;font-size:15px;line-height:1.55;color:var(--ink,#1b2a36)">'+esc(s.seeing)+'</div>';
+  if(s.ai) inner += '<div style="margin:10px 0 0;display:flex;gap:9px;align-items:baseline;flex-wrap:wrap">'+pill+'<span style="font-size:14.5px;line-height:1.5;color:var(--graphite,#3b4a57)">'+esc(s.ai.line)+'</span></div>';
+  inner += row('Spreading:', s.spread);
+  inner += row('Corroboration:', s.corrob);
+  inner += '<div style="margin:13px 0 0;font-size:12.5px;color:var(--faint,#8a99a8);font-style:italic">'+esc(s.close)+'</div>';
+  return '<div style="background:var(--card,#fff);border:1px solid var(--line,#e6ebef);border-radius:16px;box-shadow:0 1px 3px rgba(20,40,60,.05);padding:18px 20px;margin:0 0 16px"><div style="font:600 11.5px/1 var(--display,system-ui,sans-serif);letter-spacing:.13em;text-transform:uppercase;color:var(--faint,#8a99a8);margin:0 0 10px">What you’re looking at</div>'+inner+'</div>';
+}
+
 const TREND_ADMIN_JS = `<script>
 document.querySelectorAll('.thide').forEach(function(b){
   b.addEventListener('click', function(e){
@@ -1107,6 +1172,7 @@ app.get('/check/:id', async (req, res) => {
         ${constellation}
       </aside>
       <main class="rpt-main">
+        ${synthHtml(buildSynthesis(r))}
         ${aiBlock}
         <div class="note"><b>Evidence, not a verdict.</b> This reads the file, not the truth of the caption — weigh it yourself.</div>
         <div class="card">

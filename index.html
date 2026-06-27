@@ -357,6 +357,7 @@
   </section>
 
   <section class="panel" id="dossier" aria-live="polite">
+    <div id="synthCard"></div>
     <div class="doss-grid">
     <aside class="doss-side">
     <div class="doss-head">
@@ -743,6 +744,7 @@ async function publishToServer(file,hash,localFindings,readObj,sig,claim){
   catch(e){ return; } // e.g. preview sandbox with no server → leave honest placeholders
   if(!j||!j.id) return;
   lastPublishId=j.id;
+  var _sc=document.getElementById('synthCard'); if(_sc) _sc.innerHTML=j.synthHtml||'';
 
   const link=base+'/check/'+j.id;
   $('#shareUrl').textContent=link;
@@ -1019,7 +1021,7 @@ function showResultDash(read, sources){
   var sp=$('#submitPanel'); if(sp) sp.style.display='none'; document.body.classList.add('has-result');
   var d=$('#resultDash'); if(d){ d.style.display=''; try{ d.scrollIntoView({behavior:'smooth',block:'start'}); }catch(_){ window.scrollTo({top:0}); } }
 }
-function reset(){dossier.classList.remove('show');document.body.classList.remove('has-result');$('#submitPanel').style.display='';$('#linkInput').value='';const cap=$('#captionInput');if(cap)cap.value='';fileInput.value='';var _co=document.getElementById('claimOut');if(_co)_co.innerHTML='';var _vo=document.getElementById('videoOut');if(_vo)_vo.innerHTML='';var _cv2=document.getElementById('captionVerdict');if(_cv2)_cv2.innerHTML='';var _rd2=document.getElementById('resultDash');if(_rd2)_rd2.style.display='none';pendingLinkRead=null;window.scrollTo({top:0,behavior:'smooth'});}
+function reset(){dossier.classList.remove('show');document.body.classList.remove('has-result');$('#submitPanel').style.display='';$('#linkInput').value='';const cap=$('#captionInput');if(cap)cap.value='';fileInput.value='';var _co=document.getElementById('claimOut');if(_co)_co.innerHTML='';var _vo=document.getElementById('videoOut');if(_vo)_vo.innerHTML='';var _cv2=document.getElementById('captionVerdict');if(_cv2)_cv2.innerHTML='';var _sc=document.getElementById('synthCard');if(_sc)_sc.innerHTML='';var _rd2=document.getElementById('resultDash');if(_rd2)_rd2.style.display='none';pendingLinkRead=null;window.scrollTo({top:0,behavior:'smooth'});}
 $('#againBtn').addEventListener('click',reset); $('#resetBtn').addEventListener('click',reset);var _cda=$('#cdAgain');if(_cda)_cda.addEventListener('click',reset);
 $('#copyBtn').addEventListener('click',()=>{const t=$('#shareUrl').textContent;navigator.clipboard?.writeText(t).then(()=>{const b=$('#copyBtn'),o=b.textContent;b.textContent='Copied';setTimeout(()=>b.textContent=o,1400);});});
 
