@@ -44,8 +44,14 @@
   body{background:var(--paper);color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.5;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
   .wrap{max-width:960px;margin:0 auto;padding:0 22px} svg{display:block}
 
-  header.mast{padding:34px 0 0;display:flex;justify-content:center;position:relative}
-  .sub-btn{position:absolute;right:0;top:30px;background:var(--signal);color:#fff;border:none;border-radius:10px;padding:9px 15px;font-family:var(--display);font-weight:600;font-size:13.5px;cursor:pointer;box-shadow:0 3px 10px rgba(11,110,110,.25);transition:transform .12s ease,background .12s ease}
+  header.mast{padding:30px 0 0;display:flex;justify-content:space-between;align-items:center;gap:12px}
+  .sub-btn{background:var(--signal);color:#fff;border:none;border-radius:10px;padding:9px 15px;font-family:var(--display);font-weight:600;font-size:13.5px;cursor:pointer;box-shadow:0 3px 10px rgba(11,110,110,.25);transition:transform .12s ease,background .12s ease}
+  .acct{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end}
+  .acct-link{color:var(--ink);font-family:var(--display);font-weight:600;font-size:13.5px;text-decoration:none;cursor:pointer;opacity:.78}
+  .acct-link:hover{opacity:1}
+  .acct-go{background:var(--ink);color:#fff;border:none;border-radius:10px;padding:9px 14px;font-family:var(--display);font-weight:600;font-size:13.5px;cursor:pointer;transition:opacity .12s ease}
+  .acct-go:hover{opacity:.88}
+  .acct-pro{font-family:var(--display);font-weight:700;font-size:13px;color:var(--ok);background:var(--ok-wash);border:1px solid #CDE6D8;border-radius:20px;padding:4px 11px}
   .sub-btn:hover{background:var(--signal-bright);transform:translateY(-1px)}
   .nl-modal{position:fixed;inset:0;background:rgba(19,23,34,.45);display:flex;align-items:center;justify-content:center;z-index:50;padding:18px;-webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px)}
   .nl-card{background:var(--card);border-radius:18px;box-shadow:var(--shadow);max-width:420px;width:100%;padding:24px;position:relative;text-align:left}
@@ -58,7 +64,7 @@
   .nl-row input{flex:1;min-width:0;padding:11px 12px;border:1px solid var(--line-strong);border-radius:10px;font-size:14px;font-family:var(--body)}
   .nl-msg{font-size:13px;margin-top:10px;min-height:17px}
   .nl-fine{font-size:11.5px;color:var(--faint);margin-top:12px}
-  @media(max-width:600px){.sub-btn{top:26px;padding:7px 12px;font-size:12.5px}.badge{display:none}}
+  @media(max-width:600px){.sub-btn{padding:7px 11px;font-size:12px}.acct-go{padding:7px 11px;font-size:12px}.acct{gap:7px}.badge{display:none}.wordmark{font-size:16px}header.mast{padding:18px 0 0}}
   .brand{display:inline-flex;align-items:center;gap:10px;text-decoration:none;color:var(--ink)}
   .glyph{width:30px;height:30px;flex:0 0 auto;border-radius:8px;background:linear-gradient(150deg,var(--signal),var(--signal-bright));box-shadow:0 3px 10px rgba(11,110,110,.3);display:flex;align-items:center;justify-content:center}
   .glyph svg{width:20px;height:20px}
@@ -248,7 +254,7 @@
       <span class="wordmark">Relity</span>
       <span class="badge" id="modeBadge">beta</span>
     </a>
-    <button id="subBtn" class="sub-btn" type="button">Subscribe</button>
+    <div class="acct"><span id="acctNav"></span><button id="subBtn" class="sub-btn" type="button">Subscribe</button></div>
   </header>
   <div id="nlModal" class="nl-modal" style="display:none">
     <div class="nl-card">
@@ -265,6 +271,14 @@
       <div class="nl-row"><input type="email" id="nlEmail" placeholder="you@email.com" aria-label="Email address" /><button id="nlGo" class="btn" type="button">Subscribe</button></div>
       <div class="nl-msg" id="nlMsg"></div>
       <div class="nl-fine">Free · unsubscribe anytime · we never sell your data.</div>
+    </div>
+  </div>
+  <div id="loginModal" class="nl-modal" style="display:none">
+    <div class="nl-card">
+      <button class="nl-x" id="loginClose" type="button" aria-label="Close">×</button>
+      <div class="nl-h">Log in to Relity</div>
+      <div class="nl-sub">Pro members — sign in to sync your plan across devices. You can browse and check freely without an account.</div>
+      <div id="loginSlot"></div>
     </div>
   </div>
 
@@ -1092,24 +1106,28 @@ function onGoogleCred(resp){
     .catch(function(){ if(msg) msg.textContent='Google sign-in failed.'; });
 }
 async function refreshMe(){
-  const base=apiBase(); const el=$('#acctLine'); if(!base||!el) return;
+  const base=apiBase(); const nav=$('#acctNav'); const el=$('#acctLine'); if(!base) return;
   try{
     const m=await (await fetch(base+'/api/me')).json();
     GCID=m.googleClientId||'';
     if(m.tier==='pro'){
-      el.innerHTML=`✓ <b>Relity Pro</b> — unlimited web cross-checks${m.email?` · <span style="opacity:.75">${esc(m.email)}</span>`:''} · <a href="#" id="outBtn" style="color:var(--signal);font-weight:600;text-decoration:none">Log out</a>`;
+      if(nav) nav.innerHTML=`<span class="acct-pro">✓ Pro</span><a href="#" class="acct-link" id="outBtn">Log out</a>`;
+      if(el) el.innerHTML = m.email?`Signed in · <span style="opacity:.7">${esc(m.email)}</span>`:'';
     } else {
-      el.innerHTML=`${m.remaining} of ${m.limit} free web-checks left today · <a href="#" id="upBtn" style="color:var(--signal);font-weight:600;text-decoration:none">Upgrade</a> · <a href="#" id="inBtn" style="color:var(--signal);font-weight:600;text-decoration:none">Log in</a>`;
-      const u=$('#upBtn'); if(u) u.addEventListener('click',ev=>{ev.preventDefault();startUpgrade();});
-      const i=$('#inBtn'); if(i) i.addEventListener('click',ev=>{ev.preventDefault();toggleLogin();});
+      const io = m.email ? `<a href="#" class="acct-link" id="outBtn">Log out</a>` : `<a href="#" class="acct-link" id="inBtn">Log in</a>`;
+      if(nav) nav.innerHTML=`${io}<button class="acct-go" id="upBtn" type="button">Go Pro</button>`;
+      if(el) el.innerHTML = `${m.remaining} of ${m.limit} free web-checks left today`;
     }
+    const u=$('#upBtn'); if(u) u.addEventListener('click',ev=>{ev.preventDefault();startUpgrade();});
+    const i=$('#inBtn'); if(i) i.addEventListener('click',ev=>{ev.preventDefault();toggleLogin();});
     const o=$('#outBtn'); if(o) o.addEventListener('click',ev=>{ev.preventDefault();doSignout();});
   }catch(_){}
 }
 function toggleLogin(){
-  const b=$('#loginBox'); if(!b) return;
-  const open=b.style.display!=='none'; b.style.display=open?'none':'flex';
-  if(!open){ initGoogle(); const e=$('#loginEmail'); if(e) e.focus(); }
+  const md=$('#loginModal'); if(!md) return;
+  const slot=$('#loginSlot'), box=$('#loginBox'), msg=$('#loginMsg');
+  if(box&&slot&&box.parentNode!==slot){ box.style.display='flex'; slot.appendChild(box); if(msg) slot.appendChild(msg); }
+  md.style.display='flex'; initGoogle(); const e=$('#loginEmail'); if(e) setTimeout(function(){e.focus();},30);
 }
 async function sendLogin(){
   const base=apiBase(); const e=$('#loginEmail'); const msg=$('#loginMsg');
@@ -1145,6 +1163,8 @@ async function startUpgrade(){
   }catch(_){}
   const ls=$('#loginSend'); if(ls) ls.addEventListener('click',sendLogin);
   const le=$('#loginEmail'); if(le) le.addEventListener('keydown',ev=>{ if(ev.key==='Enter'){ ev.preventDefault(); sendLogin(); } });
+  var lc=document.getElementById('loginClose'); if(lc) lc.addEventListener('click',function(){var m=document.getElementById('loginModal'); if(m) m.style.display='none';});
+  var lm=document.getElementById('loginModal'); if(lm) lm.addEventListener('click',function(e){ if(e.target===lm) lm.style.display='none'; });
   refreshMe();
 })();
 </script>
