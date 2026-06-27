@@ -286,10 +286,14 @@ app.post('/api/publish', upload.single('image'), async (req, res) => {
     // the submitted claim is the most direct thing to fact-check — check it first
     const claimText = claim && (claim.title || claim.description) ? (claim.title || claim.description) : null;
     const fact = await factCheck([claimText, ...captions].filter(Boolean));
-    let aiRead = null;
-    if (req.file) {
+    let aiRead = null, claimRead = null;
+    {
       const ev = (reverse.domains && reverse.domains.length) ? reverse.domains.slice(0, 4).join(', ') : '';
-      aiRead = await ai.analyzeImage({ tier: acct.tier, sha, buffer: req.file.buffer, mime: req.file.mimetype, caption: claimText, evidence: ev }).catch(() => null);
+      const _pair = await Promise.all([
+        req.file ? ai.analyzeImage({ tier: acct.tier, sha, buffer: req.file.buffer, mime: req.file.mimetype, caption: claimText, evidence: ev }).catch(() => null) : Promise.resolve(null),
+        claimText ? ai.analyzeClaim({ tier: acct.tier, text: claimText }).catch(() => null) : Promise.resolve(null)
+      ]);
+      aiRead = _pair[0]; claimRead = _pair[1];
     }
 
     // recontextualization: claim presents the image as current, but the image is demonstrably older
@@ -302,7 +306,7 @@ app.post('/api/publish', upload.single('image'), async (req, res) => {
       if (claim.verdict && claim.verdict.line) claimOut.verdict = { badge: String(claim.verdict.badge || '').slice(0, 60), line: String(claim.verdict.line || '').slice(0, 400), level: claim.verdict.level || '' };
     }
 
-    const report = { id, sha256: sha, createdAt: Date.now(), findings, read, reverse, reverseCached, fact, aiRead, prov: (req.body.prov || null), claim: claimOut, hasImage: !!req.file };
+    const report = { id, sha256: sha, createdAt: Date.now(), findings, read, reverse, reverseCached, fact, aiRead, claimRead, prov: (req.body.prov || null), claim: claimOut, hasImage: !!req.file };
     await putReport(id, report);
     if (acct.tier === 'pro' && acct.email) { try { const ch = consensusOf(report); histPush(acct.email, { id, title: clip(((claimOut && (claimOut.title || claimOut.description)) || 'Image check'), 90), badge: ch ? ch.badge : '', level: ch ? ch.level : '', at: Date.now() }).catch(() => {}); } catch (e) {} }
     try {
@@ -698,63 +702,64 @@ function buildSynthesis(r){
   const capText = String(claim.title || claim.description || '').trim();
   const source = String(claim.source || '').trim();
   let seeing = '';
-  if(capText){
-    seeing = (source ? 'Posted on ' + source + '. ' : '') + 'The caption claims: “' + clip(capText, 240) + '”';
-  }
-  // AI-material read, pulled from the vision layer's "READ: <label> · <N>%" line
-  let ai = null;
+  if(capText){ seeing = (source ? 'Posted on ' + source + '. ' : '') + 'The caption claims: “' + clip(capText, 220) + '”'; }
+  else if(source){ seeing = 'Posted on ' + source + '.'; }
+  // MEDIA AXIS — authenticity read from the vision layer's "READ: <label> · <N>%" line
+  const reachOK = !!(r.reverse && r.reverse.connected && !r.reverse.degraded && !r.reverse.limited);
+  const di = reachOK ? interpretDomains(r.reverse.domains) : { flag:null, found:false, examined:false };
+  const count = reachOK ? (r.reverse.count || 0) : 0;
+  let media = null;
   const t = String((r.aiRead && r.aiRead.text) || '');
   const m = t.match(/READ:\s*([^\n·•]+?)\s*[·•]\s*(\d{1,3})\s*%/i);
   if(m){
     const lean = aiLeanOf(t);
-    const line = lean==='ai' ? 'The closest AI look reads this image as likely AI-generated.'
+    let line = lean==='ai' ? 'The closest AI look reads the image as likely AI-generated.'
       : lean==='edited' ? 'The closest AI look flagged possible signs of editing.'
-      : lean==='real' ? 'The closest AI look found signals consistent with a real photo — though a single clean frame can’t rule out AI video.'
+      : lean==='real' ? 'The closest AI look found signals consistent with a real photo — though a clean still can’t rule out AI video.'
       : 'The closest AI look was inconclusive on this frame.';
-    ai = { label: m[1].trim(), pct: parseInt(m[2],10), lean: lean || 'inconclusive', line };
+    if(reachOK && count>0) line += ' It’s circulating across ' + spreadPhrase(count) + ' online.';
+    else if(r.reverse && r.reverse.limited) line += ' (Live web cross-check wasn’t run — free daily limit.)';
+    media = { label: m[1].trim(), pct: parseInt(m[2],10), lean: lean || 'inconclusive', line };
   }
-  // free spread proxy: where the image turns up + whether a fact-check is on record
-  const reachOK = !!(r.reverse && r.reverse.connected && !r.reverse.degraded && !r.reverse.limited);
-  const di = reachOK ? interpretDomains(r.reverse.domains) : { flag:null, found:false, examined:false };
-  const count = reachOK ? (r.reverse.count || 0) : 0;
+  // CLAIM AXIS — adapts to what the caption actually is (uses the claim classifier when present)
   const debunked = !!(r.fact && r.fact.connected && (r.fact.claims || []).length);
-  let spread = '';
-  if(!reachOK){
-    spread = (r.reverse && r.reverse.limited) ? 'Live web cross-check wasn’t run this time (free daily limit reached).' : '';
-  } else if(count > 0){
-    spread = 'This image is already circulating online — seen across ' + spreadPhrase(count) + '.';
-  } else {
-    spread = 'No other public copies of this image surfaced in the web check.';
+  const cr = r.claimRead || null;
+  let claimAxis = '';
+  if(capText){
+    const extracted = cr ? String(cr.claim || '').trim() : '';
+    if(cr && cr.kind === 'opinion' && !extracted){
+      claimAxis = 'This reads as opinion or a personal post — not a factual news claim, so there’s nothing to fact-check.';
+    } else if(cr && cr.kind === 'question'){
+      claimAxis = 'This is phrased as a question rather than a claim' + (cr.answer ? ' — best general answer: ' + clip(cr.answer,160) : '') + '.';
+    } else if(cr && !extracted){
+      claimAxis = 'No specific factual claim to verify here — treat it as commentary.';
+    } else if(debunked){
+      claimAxis = 'Fact-checkers have already addressed this claim — read their finding below.';
+    } else if(cr && cr.knownStatus === 'contradicted' && cr.correction){
+      claimAxis = 'This runs against the established record: ' + clip(cr.correction,200);
+    } else if(di.flag === 'news'){
+      claimAxis = 'It’s carried by credible news outlets — consistent with a real event, though verify the exact context.';
+    } else {
+      claimAxis = 'No credible newsroom or fact-check surfaced for this claim — not proof either way, but a real news event usually shows up in reporting.';
+    }
   }
-  let corrob = '';
-  if(debunked){
-    corrob = 'Fact-checkers have already addressed this — read their finding below.';
-  } else if(di.flag === 'news'){
-    corrob = 'It appears on credible news outlets, consistent with a real news image — still verify the exact context.';
-  } else if(di.flag === 'ai'){
-    corrob = 'It turns up on AI-image sites — a hint the picture itself may be AI-made.';
-  } else if(reachOK){
-    corrob = 'No credible newsroom and no fact-check surfaced for this — not proof either way, but a genuine news event usually shows up in reporting.';
-  }
-  if(!seeing && !ai && !spread && !corrob) return null;
-  return { seeing, ai, spread, corrob, close: 'This is evidence, not a verdict — weigh the signals and decide for yourself.' };
+  if(!seeing && !media && !claimAxis) return null;
+  return { seeing, media, claim: claimAxis, close: 'Evidence, not a verdict — weigh both and decide for yourself.' };
 }
 function synthHtml(s){
   if(!s) return '';
   const esc = t => (t == null ? '' : String(t)).replace(/[<>&"]/g, c => ({ '<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;' }[c]));
   const LC = { ai:'#C16A57', edited:'#C7A24E', real:'#57A07D', inconclusive:'#9aa7b2' };
   let pill = '';
-  if(s.ai){ pill = '<span style="display:inline-block;padding:3px 10px;border-radius:999px;font:600 12.5px/1.5 var(--display,system-ui,sans-serif);color:#fff;background:'+(LC[s.ai.lean]||LC.inconclusive)+';white-space:nowrap">'+esc(s.ai.label)+' · '+s.ai.pct+'%</span>'; }
-  const row = (label, txt) => txt ? '<div style="margin:8px 0 0;font-size:14.5px;line-height:1.55;color:var(--graphite,#3b4a57)"><b style="font-family:var(--display,system-ui,sans-serif);color:var(--ink,#1b2a36)">'+label+'</b> '+esc(txt)+'</div>' : '';
+  if(s.media){ pill = '<span style="display:inline-block;padding:3px 10px;border-radius:999px;font:600 12.5px/1.5 var(--display,system-ui,sans-serif);color:#fff;background:'+(LC[s.media.lean]||LC.inconclusive)+';white-space:nowrap;margin-right:7px">'+esc(s.media.label)+' · '+s.media.pct+'%</span>'; }
+  const axis = (label, body) => body ? '<div style="margin:11px 0 0;font-size:14.5px;line-height:1.55;color:var(--graphite,#3b4a57)"><span style="font-family:var(--display,system-ui,sans-serif);font-weight:600;color:var(--ink,#1b2a36)">'+label+'</span> '+body+'</div>' : '';
   let inner = '';
-  if(s.seeing) inner += '<div style="margin:0 0 6px;font-size:15px;line-height:1.55;color:var(--ink,#1b2a36)">'+esc(s.seeing)+'</div>';
-  if(s.ai) inner += '<div style="margin:10px 0 0;display:flex;gap:9px;align-items:baseline;flex-wrap:wrap">'+pill+'<span style="font-size:14.5px;line-height:1.5;color:var(--graphite,#3b4a57)">'+esc(s.ai.line)+'</span></div>';
-  inner += row('Spreading:', s.spread);
-  inner += row('Corroboration:', s.corrob);
+  if(s.seeing) inner += '<div style="margin:0 0 4px;font-size:15px;line-height:1.55;color:var(--ink,#1b2a36)">'+esc(s.seeing)+'</div>';
+  if(s.media) inner += axis('The media:', pill + '<span>'+esc(s.media.line)+'</span>');
+  if(s.claim) inner += axis('The claim:', esc(s.claim));
   inner += '<div style="margin:13px 0 0;font-size:12.5px;color:var(--faint,#8a99a8);font-style:italic">'+esc(s.close)+'</div>';
   return '<div style="background:var(--card,#fff);border:1px solid var(--line,#e6ebef);border-radius:16px;box-shadow:0 1px 3px rgba(20,40,60,.05);padding:18px 20px;margin:0 0 16px"><div style="font:600 11.5px/1 var(--display,system-ui,sans-serif);letter-spacing:.13em;text-transform:uppercase;color:var(--faint,#8a99a8);margin:0 0 10px">What you’re looking at</div>'+inner+'</div>';
 }
-
 const TREND_ADMIN_JS = `<script>
 document.querySelectorAll('.thide').forEach(function(b){
   b.addEventListener('click', function(e){
