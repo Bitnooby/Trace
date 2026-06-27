@@ -189,7 +189,7 @@ module.exports = function telegram({ claims, ai, img, video, news, redisOn, redi
       if (vid && vid.file_id) { await checkVideoMessage(chatId, vid.file_id, m.caption || ''); return; }
 
       if (/^\/(start|help)\b/.test(text)) {
-        await send(chatId, '👋 <b>Relity</b> — evidence, not verdicts.\n\nSend me any of these and I’ll show the evidence:\n• a <b>claim / headline / post</b> → is it a checkable claim backed by evidence, or just opinion?\n• an <b>image</b> → where it appears online + an AI read\n• a <b>video file</b> → where its frames appear online\n\nNote: I can’t open videos from X/social <i>links</i> — download the clip and send the file.\n\n🗞️ /subscribe — a daily digest of what multiple newsrooms corroborate.\n\nFull site: ' + BASE);
+        await send(chatId, '👋 <b>Relity</b> — evidence, not verdicts.\n\nI show you the evidence behind what you see online, so you can decide for yourself.\n\n<b>Check anything</b> — send me:\n• a <b>claim / headline / post</b> → backed by sources, debunked, or just opinion?\n• an <b>image</b> → where it appears online + an AI-generation read\n• a <b>video file</b> → where its frames appear online\n\n<b>In a group?</b> Reply <b>/check</b> to any message, photo, or video to fact-check it for everyone.\n\n🗞️ <b>/subscribe</b> — a daily digest of what independent newsrooms actually agree on.\n\n💬 In any chat, type <b>@RelityCheck_bot</b> + a claim for a quick inline read.\n\nTip: I can’t open videos from X/social <i>links</i> — download the clip and send the file.\n\n/share to pass Relity on  ·  full site: ' + BASE);
         return;
       }
       if (!text) { await send(chatId, 'Send me a claim, headline, image, or video and I’ll show the evidence.'); return; }
