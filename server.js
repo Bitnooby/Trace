@@ -311,7 +311,7 @@ app.post('/api/publish', upload.single('image'), async (req, res) => {
         trendPush({ id, at: Date.now(), cap: clip((claimOut.title||claimOut.description||''),140), src: claimOut.source||'', n: reverse.count||0, badge: trd?trd.badge:'', level: trd?trd.level:'scrutinize' }).catch(()=>{});
       }
     } catch (e) { /* trending is best-effort, never block a check */ }
-    res.json({ id, reverse, fact, claim: claimOut, aiRead, synthHtml: synthHtml(buildSynthesis(report)), quota: { used: await quotaGet(rid), limit, tier: acct.tier } });
+    res.json({ id, reverse, fact, claim: claimOut, aiRead, synthHtml: (function(){ try { return synthHtml(buildSynthesis(report)); } catch(e){ return ''; } })(), quota: { used: await quotaGet(rid), limit, tier: acct.tier } });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -741,6 +741,7 @@ function buildSynthesis(r){
 }
 function synthHtml(s){
   if(!s) return '';
+  const esc = t => (t == null ? '' : String(t)).replace(/[<>&"]/g, c => ({ '<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;' }[c]));
   const LC = { ai:'#C16A57', edited:'#C7A24E', real:'#57A07D', inconclusive:'#9aa7b2' };
   let pill = '';
   if(s.ai){ pill = '<span style="display:inline-block;padding:3px 10px;border-radius:999px;font:600 12.5px/1.5 var(--display,system-ui,sans-serif);color:#fff;background:'+(LC[s.ai.lean]||LC.inconclusive)+';white-space:nowrap">'+esc(s.ai.label)+' · '+s.ai.pct+'%</span>'; }
@@ -1172,7 +1173,7 @@ app.get('/check/:id', async (req, res) => {
         ${constellation}
       </aside>
       <main class="rpt-main">
-        ${synthHtml(buildSynthesis(r))}
+        ${(function(){ try { return synthHtml(buildSynthesis(r)); } catch(e){ return ''; } })()}
         ${aiBlock}
         <div class="note"><b>Evidence, not a verdict.</b> This reads the file, not the truth of the caption — weigh it yourself.</div>
         <div class="card">
