@@ -1172,10 +1172,22 @@ async function sendLogin(){
   if(msg){ msg.style.display='block'; msg.textContent='Sending…'; }
   try{
     const j=await (await fetch(base+'/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email})})).json();
-    if(j&&j.ok){ if(msg) msg.textContent='Check your email for a sign-in link.'; const lb=$('#loginBox'); if(lb) lb.style.display='none'; }
+    if(j&&j.ok){ if(msg){ msg.style.display='block'; msg.textContent='Check your email — open the link on any device and this page signs you in automatically.'; } if(j.rid) pollLogin(j.rid); }
     else if(j&&j.notPro){ if(msg){ msg.style.display='block'; msg.innerHTML='No Relity Pro plan found for that email. If you paid with a different one, try that \u2014 or <a href="#" id="upFromLogin" style="color:var(--signal);font-weight:600;text-decoration:none">upgrade to Pro \u2192</a>'; var up=document.getElementById('upFromLogin'); if(up) up.addEventListener('click',function(ev){ev.preventDefault();startUpgrade();}); } }
     else if(msg) msg.textContent=(j&&j.error)||'Could not send the link.';
   }catch(_){ if(msg) msg.textContent='Could not send the link. Try again.'; }
+}
+function pollLogin(rid){
+  const base=apiBase(); if(!base||!rid) return; var tries=0;
+  var iv=setInterval(async function(){
+    tries++; if(tries>120){ clearInterval(iv); return; }
+    try{
+      const r=await fetch(base+'/api/login/poll?rid='+encodeURIComponent(rid));
+      const j=await r.json();
+      if(j&&j.ok){ clearInterval(iv); var md=document.getElementById('loginModal'); if(md) md.style.display='none'; var msg=$('#loginMsg'); if(msg) msg.textContent='Signed in!'; refreshMe(); }
+      else if(j&&j.expired){ clearInterval(iv); }
+    }catch(_){}
+  },3000);
 }
 async function doSignout(){
   const base=apiBase(); try{ await fetch(base+'/api/signout',{method:'POST'}); }catch(_){}

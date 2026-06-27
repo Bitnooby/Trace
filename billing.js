@@ -52,6 +52,29 @@ module.exports = function billing({ redisOn, redisCmd, readCookie }) {
     return `ruid=${p}.${sig(p)}; Path=/; Max-Age=31536000; HttpOnly; SameSite=Lax; Secure`;
   }
 
+  /* ---- cross-device login: a pending request the originating device polls ---- */
+  const memLogin = new Map();
+  async function loginReqCreate(email) {
+    const rid = crypto.randomBytes(18).toString('hex');
+    const rec = JSON.stringify({ email, confirmed: false });
+    if (redisOn) { try { await redisCmd(['SET', `relity:login:${rid}`, rec, 'EX', 1800]); return rid; } catch {} }
+    memLogin.set(rid, { email, confirmed: false, at: Date.now() }); return rid;
+  }
+  async function loginReqGet(rid) {
+    if (!rid) return null;
+    if (redisOn) { try { const v = await redisCmd(['GET', `relity:login:${rid}`]); return v ? JSON.parse(v) : null; } catch {} }
+    const m = memLogin.get(rid); if (!m) return null; if (Date.now() - m.at > 1800000) { memLogin.delete(rid); return null; } return m;
+  }
+  async function loginReqConfirm(rid, email) {
+    if (!rid) return;
+    if (redisOn) { try { const v = await redisCmd(['GET', `relity:login:${rid}`]); if (v) { const o = JSON.parse(v); if (o.email === email) { o.confirmed = true; await redisCmd(['SET', `relity:login:${rid}`, JSON.stringify(o), 'EX', 1800]); } } return; } catch {} }
+    const m = memLogin.get(rid); if (m && m.email === email) m.confirmed = true;
+  }
+  async function loginReqDel(rid) {
+    if (redisOn) { try { await redisCmd(['DEL', `relity:login:${rid}`]); return; } catch {} }
+    memLogin.delete(rid);
+  }
+
   /* ---- magic-link email login (passwordless) ---- */
   async function sendMail(to, subject, html) {
     const r = await fetch('https://api.resend.com/emails', {
@@ -135,9 +158,10 @@ module.exports = function billing({ redisOn, redisCmd, readCookie }) {
         const payload = b64(JSON.stringify({ e: email, x: Date.now() + 30 * 60 * 1000 }));
         const tok = `${payload}.${sig(payload)}`;
         const base = `${req.protocol}://${req.get('host')}`;
-        const link = `${base}/api/auth?token=${encodeURIComponent(tok)}`;
+        const rid = await loginReqCreate(email);
+        const link = `${base}/api/auth?token=${encodeURIComponent(tok)}&rid=${rid}`;
         await sendMail(email, 'Your Relity sign-in link', loginEmailHtml(link));
-        res.json({ ok: true });
+        res.json({ ok: true, rid });
       } catch (e) { console.error('login:', e.message); res.status(500).json({ error: 'Could not send the link. Try again shortly.' }); }
     });
 
@@ -148,8 +172,19 @@ module.exports = function billing({ redisOn, redisCmd, readCookie }) {
       let o = null;
       if (i > 1 && sig(tok.slice(0, i)) === tok.slice(i + 1)) { try { o = JSON.parse(unb64(tok.slice(0, i))); } catch {} }
       if (!o || !o.e || !o.x || Date.now() > o.x) return res.redirect(302, '/?login=expired');
+      try { await loginReqConfirm((req.query.rid || '').toString(), o.e); } catch {}
       res.setHeader('Set-Cookie', sessionCookie(o.e));
       res.redirect(302, '/?login=ok');
+    });
+    // The originating device polls this until the link is clicked anywhere, then claims its own session.
+    app.get('/api/login/poll', async (req, res) => {
+      const rid = (req.query.rid || '').toString();
+      const r = await loginReqGet(rid);
+      if (!r) return res.json({ ok: false, expired: true });
+      if (!r.confirmed) return res.json({ ok: false, pending: true });
+      res.setHeader('Set-Cookie', sessionCookie(r.email));
+      await loginReqDel(rid);
+      res.json({ ok: true, tier: (await isPro(r.email)) ? 'pro' : 'free', email: r.email });
     });
 
     // Sign in with Google: verify the ID token (Google checks signature+expiry), enforce aud, then sign in.
