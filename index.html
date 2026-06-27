@@ -157,6 +157,13 @@
   .doss-file{font-family:var(--mono);font-size:12.5px;color:var(--graphite);word-break:break-all;line-height:1.4}
   .doss-h{font-family:var(--display);font-weight:600;font-size:20px;margin:3px 0 11px}
   .chips{display:flex;flex-wrap:wrap;gap:7px}
+  .doss-htop{display:flex;align-items:center;gap:9px}
+  .doss-htop .doss-h{margin:0}
+  .fileinfo-btn{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--graphite);cursor:pointer;padding:0;flex:none;transition:all .15s}
+  .fileinfo-btn:hover{color:var(--signal);border-color:var(--signal)}
+  .fileinfo-btn.on{background:var(--signal-wash);color:var(--signal);border-color:var(--signal-line)}
+  .fileinfo-btn svg{width:16px;height:16px}
+  .fileinfo{margin-top:10px}
   .factchip{font-family:var(--mono);font-size:11.5px;color:var(--graphite);background:var(--paper);border:1px solid var(--line);border-radius:7px;padding:4px 9px}
   .factchip.hash{color:var(--signal);border-color:var(--signal-line);background:var(--signal-wash)}
 
@@ -363,9 +370,14 @@
     <div class="doss-head">
       <div class="preview" id="preview"><img id="previewImg" alt="Submitted image preview" /><div class="scanline"></div></div>
       <div class="doss-meta">
-        <div class="doss-file" id="fileName">—</div>
-        <div class="doss-h">Evidence report</div>
-        <div class="chips" id="factChips"></div>
+        <div class="doss-htop">
+          <div class="doss-h">Evidence report</div>
+          <button class="fileinfo-btn" id="fileInfoBtn" type="button" aria-expanded="false" aria-label="Show file details" title="File details"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></button>
+        </div>
+        <div class="fileinfo" id="fileInfo" style="display:none">
+          <div class="doss-file" id="fileName">—</div>
+          <div class="chips" id="factChips"></div>
+        </div>
       </div>
     </div>
 
@@ -1021,8 +1033,8 @@ function showResultDash(read, sources){
   var sp=$('#submitPanel'); if(sp) sp.style.display='none'; document.body.classList.add('has-result');
   var d=$('#resultDash'); if(d){ d.style.display=''; try{ d.scrollIntoView({behavior:'smooth',block:'start'}); }catch(_){ window.scrollTo({top:0}); } }
 }
-function reset(){dossier.classList.remove('show');document.body.classList.remove('has-result');$('#submitPanel').style.display='';$('#linkInput').value='';const cap=$('#captionInput');if(cap)cap.value='';fileInput.value='';var _co=document.getElementById('claimOut');if(_co)_co.innerHTML='';var _vo=document.getElementById('videoOut');if(_vo)_vo.innerHTML='';var _cv2=document.getElementById('captionVerdict');if(_cv2)_cv2.innerHTML='';var _sc=document.getElementById('synthCard');if(_sc)_sc.innerHTML='';var _rd2=document.getElementById('resultDash');if(_rd2)_rd2.style.display='none';pendingLinkRead=null;window.scrollTo({top:0,behavior:'smooth'});}
-$('#againBtn').addEventListener('click',reset); $('#resetBtn').addEventListener('click',reset);var _cda=$('#cdAgain');if(_cda)_cda.addEventListener('click',reset);
+function reset(){dossier.classList.remove('show');document.body.classList.remove('has-result');$('#submitPanel').style.display='';$('#linkInput').value='';const cap=$('#captionInput');if(cap)cap.value='';fileInput.value='';var _co=document.getElementById('claimOut');if(_co)_co.innerHTML='';var _vo=document.getElementById('videoOut');if(_vo)_vo.innerHTML='';var _cv2=document.getElementById('captionVerdict');if(_cv2)_cv2.innerHTML='';var _sc=document.getElementById('synthCard');if(_sc)_sc.innerHTML='';var _fi=document.getElementById('fileInfo');if(_fi)_fi.style.display='none';var _fib2=document.getElementById('fileInfoBtn');if(_fib2)_fib2.classList.remove('on');var _rd2=document.getElementById('resultDash');if(_rd2)_rd2.style.display='none';pendingLinkRead=null;window.scrollTo({top:0,behavior:'smooth'});}
+$('#againBtn').addEventListener('click',reset); $('#resetBtn').addEventListener('click',reset);var _cda=$('#cdAgain');if(_cda)_cda.addEventListener('click',reset);var _fib=document.getElementById('fileInfoBtn');if(_fib)_fib.addEventListener('click',function(){var fi=document.getElementById('fileInfo');if(!fi)return;var open=fi.style.display!=='none';fi.style.display=open?'none':'block';_fib.classList.toggle('on',!open);_fib.setAttribute('aria-expanded',open?'false':'true');});
 $('#copyBtn').addEventListener('click',()=>{const t=$('#shareUrl').textContent;navigator.clipboard?.writeText(t).then(()=>{const b=$('#copyBtn'),o=b.textContent;b.textContent='Copied';setTimeout(()=>b.textContent=o,1400);});});
 
 /* badge reflects mode */
