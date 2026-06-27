@@ -82,6 +82,7 @@
   .nr-hi{background:var(--ok)}.nr-md{background:#3C5E8A}
   .nr-t{font-size:13px;line-height:1.4;color:var(--ink)}
   .rightcol{display:flex;flex-direction:column;gap:16px}
+  body.has-result .home{display:none}
   .tn-tag{font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--warn);background:var(--warn-wash);border-radius:20px;padding:2px 8px}
   .tn-item{display:block;padding:9px 0;border-top:1px solid var(--line);text-decoration:none;color:inherit}
   .tn-item:hover .tn-head{color:var(--signal)}
@@ -660,7 +661,7 @@ function renderRows(F,hash,serverOn){
   const id=(hash?hash.slice(0,6):Math.random().toString(36).slice(2,8));
   $('#scUrl').textContent='relity.ai/check/'+id;
   $('#shareUrl').textContent='https://relity.ai/check/'+id;
-  dossier.classList.add('show'); $('#submitPanel').style.display='none';
+  dossier.classList.add('show'); document.body.classList.add('has-result'); $('#submitPanel').style.display='none';
   dossier.scrollIntoView({behavior:'smooth',block:'start'});
   setTimeout(()=>rowsEl.classList.add('revealed'),60);
   setTimeout(()=>$('#preview').classList.remove('scanning'),2300);
@@ -1014,10 +1015,10 @@ function showResultDash(read, sources){
   var side=$('#cdSide'), main=$('#cdMain');
   if(side) side.innerHTML='<div class="read-banner '+cls+'" style="border-radius:13px"><div class="rb-eyebrow">'+esc(read.eyebrow||'Consensus — the evidence, weighed')+'</div><div class="rb-badge"><span class="dotb"></span>'+esc(read.badge||'')+'</div><div class="rb-line">'+esc(read.line||'')+'</div></div>';
   if(main) main.innerHTML=(sourceList(sources)||'<div class="card" style="padding:15px"><div class="row-read" style="color:var(--faint)">No public sources surfaced to cite for this one — absence of a record isn’t proof either way.</div></div>');
-  var sp=$('#submitPanel'); if(sp) sp.style.display='none';
-  var d=$('#resultDash'); if(d){ d.style.display=''; try{ window.scrollTo({top:0,behavior:'smooth'}); }catch(_){} }
+  var sp=$('#submitPanel'); if(sp) sp.style.display='none'; document.body.classList.add('has-result');
+  var d=$('#resultDash'); if(d){ d.style.display=''; try{ d.scrollIntoView({behavior:'smooth',block:'start'}); }catch(_){ window.scrollTo({top:0}); } }
 }
-function reset(){dossier.classList.remove('show');$('#submitPanel').style.display='';$('#linkInput').value='';const cap=$('#captionInput');if(cap)cap.value='';fileInput.value='';var _co=document.getElementById('claimOut');if(_co)_co.innerHTML='';var _vo=document.getElementById('videoOut');if(_vo)_vo.innerHTML='';var _cv2=document.getElementById('captionVerdict');if(_cv2)_cv2.innerHTML='';var _rd2=document.getElementById('resultDash');if(_rd2)_rd2.style.display='none';pendingLinkRead=null;window.scrollTo({top:0,behavior:'smooth'});}
+function reset(){dossier.classList.remove('show');document.body.classList.remove('has-result');$('#submitPanel').style.display='';$('#linkInput').value='';const cap=$('#captionInput');if(cap)cap.value='';fileInput.value='';var _co=document.getElementById('claimOut');if(_co)_co.innerHTML='';var _vo=document.getElementById('videoOut');if(_vo)_vo.innerHTML='';var _cv2=document.getElementById('captionVerdict');if(_cv2)_cv2.innerHTML='';var _rd2=document.getElementById('resultDash');if(_rd2)_rd2.style.display='none';pendingLinkRead=null;window.scrollTo({top:0,behavior:'smooth'});}
 $('#againBtn').addEventListener('click',reset); $('#resetBtn').addEventListener('click',reset);var _cda=$('#cdAgain');if(_cda)_cda.addEventListener('click',reset);
 $('#copyBtn').addEventListener('click',()=>{const t=$('#shareUrl').textContent;navigator.clipboard?.writeText(t).then(()=>{const b=$('#copyBtn'),o=b.textContent;b.textContent='Copied';setTimeout(()=>b.textContent=o,1400);});});
 
