@@ -730,7 +730,7 @@ function buildSynthesis(r){
     if(cr && cr.kind === 'opinion' && !extracted){
       claimAxis = 'This reads as opinion or a personal post — not a factual news claim, so there’s nothing to fact-check.';
     } else if(cr && cr.kind === 'question'){
-      claimAxis = 'This is phrased as a question rather than a claim' + (cr.answer ? ' — best general answer: ' + clip(cr.answer,160) : '') + '.';
+      claimAxis = cr.answer ? ('This is a question — best general answer: ' + clip(cr.answer,160)) : 'This is phrased as a question rather than a claim.';
     } else if(cr && !extracted){
       claimAxis = 'No specific factual claim to verify here — treat it as commentary.';
     } else if(debunked){
@@ -759,6 +759,17 @@ function synthHtml(s){
   if(s.claim) inner += axis('The claim:', esc(s.claim));
   inner += '<div style="margin:13px 0 0;font-size:12.5px;color:var(--faint,#8a99a8);font-style:italic">'+esc(s.close)+'</div>';
   return '<div style="background:var(--card,#fff);border:1px solid var(--line,#e6ebef);border-radius:16px;box-shadow:0 1px 3px rgba(20,40,60,.05);padding:18px 20px;margin:0 0 16px"><div style="font:600 11.5px/1 var(--display,system-ui,sans-serif);letter-spacing:.13em;text-transform:uppercase;color:var(--faint,#8a99a8);margin:0 0 10px">What you’re looking at</div>'+inner+'</div>';
+}
+function claimReadLine(cls, read){
+  try{
+    if(cls){
+      const extracted = String(cls.claim||'').trim();
+      if(cls.kind==='opinion' && !extracted) return 'This reads as opinion, not a factual claim \u2014 nothing to fact-check.';
+      if(cls.kind==='question') return cls.answer ? ('This is a question \u2014 best general answer: ' + clip(cls.answer,200)) : 'This is a question, not a claim.';
+      if(cls.knownStatus==='contradicted' && cls.correction) return 'This runs against the established record: ' + clip(cls.correction,200);
+    }
+  }catch(e){}
+  return (read && read.line) ? read.line : '';
 }
 const TREND_ADMIN_JS = `<script>
 document.querySelectorAll('.thide').forEach(function(b){
@@ -1003,7 +1014,7 @@ app.post('/api/v1/check', async (req, res) => {
   try {
     const cls = (ai && ai.analyzeClaim) ? await ai.analyzeClaim({ tier: 'pro', text }).catch(() => null) : null;
     const r = await claims.analyze(text, cls, 'pro');
-    res.json({ ok: true, query: text, read: (r && r.read) || null, sources: (r && r.sources && r.sources.items) ? r.sources.items.slice(0, 8) : [] });
+    res.json({ ok: true, query: text, kind: (cls && cls.kind) || null, read: (r && r.read) || null, summary: claimReadLine(cls, r && r.read), sources: (r && r.sources && r.sources.items) ? r.sources.items.slice(0, 8) : [] });
   } catch (e) { res.status(500).json({ error: 'Check failed — try again.' }); }
 });
 app.get('/developers', async (req, res) => {
@@ -1381,7 +1392,7 @@ function page(title, body, base, og, wide) {
 billing.mount(app, express);
 app.use('/api/check-claim', (req, res, next) => meteredGate('claim', req, res, next));
 claims.mount(app);
-const telegram = require('./telegram')({ claims, ai, video, news, redisOn, redisCmd, img: { putImage, getReport, putReport, reverseSearch, interpretDomains, vintageYear, computeConsensus } });
+const telegram = require('./telegram')({ claims, ai, video, news, redisOn, redisCmd, img: { putImage, getReport, putReport, reverseSearch, interpretDomains, vintageYear, computeConsensus, buildSynthesis } });
 telegram.mount(app);
 app.use('/api/check-video', (req, res, next) => meteredGate('video', req, res, next));
 video.mount(app, uploadVideo);

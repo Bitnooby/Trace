@@ -97,7 +97,7 @@ module.exports = function telegram({ claims, ai, img, video, news, redisOn, redi
     try {
       const cls = (ai && ai.analyzeClaim) ? await ai.analyzeClaim({ tier: 'free', text: t }).catch(() => null) : null;
       const r = await claims.analyze(t, cls, 'free');
-      if (r && r.read) return '\n\n🧾 <b>Caption check</b> — ' + esc(r.read.badge) + '\n' + esc(r.read.line);
+      if (r && r.read) return '\n\n🧾 <b>The claim:</b> ' + esc(r.read.badge) + ' — ' + esc(r.read.line);
     } catch (e) { console.error('captionCheck:', e.message); }
     return '';
   }
@@ -126,10 +126,12 @@ module.exports = function telegram({ claims, ai, img, video, news, redisOn, redi
         ? img.computeConsensus('stripped', ci.flag || null, false, reachOK ? (report.reverse.count || 0) : 0, !!ci.examined, vintage, null)
         : { badge: 'Checked', line: '' };
       let msg = '🔎 <b>Relity</b> — evidence, not verdicts\n\n<b>' + esc(rd.badge) + '</b>\n' + esc(rd.line);
-      if (report.aiRead && report.aiRead.text) msg += '\n\n<b>AI vision:</b> ' + esc(report.aiRead.text);
+      const synth = (img.buildSynthesis) ? img.buildSynthesis(report) : null;
+      if (synth && synth.media) msg += '\n\n👁 <b>The media:</b> ' + esc(synth.media.label) + ' · ' + synth.media.pct + '% — ' + esc(synth.media.line);
+      else if (report.aiRead && report.aiRead.text) msg += '\n\n<b>AI vision:</b> ' + esc(report.aiRead.text);
+      msg += await captionCheck(caption);
       if (reachOK && report.reverse.domains && report.reverse.domains.length) msg += '\n\n<i>Seen on:</i> ' + esc(report.reverse.domains.slice(0, 4).join(', '));
       try { const ts = ((report.reverse && report.reverse.matches) || []).map(m => m && m.title).filter(Boolean); if (reachOK && ts.length >= 2 && ai && ai.identifyEvent) { const ev = await ai.identifyEvent({ tier: 'free', titles: ts }); if (ev && ev.event) msg += '\n\n📰 <b>Appears in coverage of:</b> ' + esc(ev.event); } } catch (e) {}
-      msg += await captionCheck(caption);
       msg += '\n\n📄 Full report: ' + BASE + '/check/' + id;
       await send(chatId, msg);
     } catch (e) { console.error('telegram checkPhoto:', e.message); await send(chatId, '⚠️ Something went wrong checking that image. Try again, or use ' + BASE + '.'); }
