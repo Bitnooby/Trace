@@ -878,6 +878,72 @@ app.get('/history', async (req, res) => {
   res.send(page('Relity — Your history', body, base, null, true));
 });
 
+// ---- Pro API: key management + programmatic check ----
+const memKeyByKey = new Map(), memKeyByEmail = new Map();
+async function apiKeyGet(email) {
+  email = String(email).toLowerCase();
+  if (redisOn) { try { const k = await redisCmd(['GET', `relity:apikeyof:${email}`]); return k || null; } catch {} }
+  return memKeyByEmail.get(email) || null;
+}
+async function apiKeyEmail(key) {
+  if (!key) return null;
+  if (redisOn) { try { const e = await redisCmd(['GET', `relity:apikey:${key}`]); return e || null; } catch {} }
+  return memKeyByKey.get(key) || null;
+}
+async function apiKeyCreate(email) {
+  email = String(email).toLowerCase();
+  const old = await apiKeyGet(email);
+  if (old) { if (redisOn) { try { await redisCmd(['DEL', `relity:apikey:${old}`]); } catch {} } memKeyByKey.delete(old); }
+  const key = 'rel_' + crypto.randomBytes(24).toString('hex');
+  if (redisOn) { try { await redisCmd(['SET', `relity:apikey:${key}`, email]); await redisCmd(['SET', `relity:apikeyof:${email}`, key]); } catch {} }
+  memKeyByKey.set(key, email); memKeyByEmail.set(email, key);
+  return key;
+}
+app.get('/api/key', async (req, res) => {
+  const acct = await billing.tierOf(req);
+  if (acct.tier !== 'pro' || !acct.email) return res.json({ ok: false, error: 'API access is a Pro feature.' });
+  let k = await apiKeyGet(acct.email); if (!k) k = await apiKeyCreate(acct.email);
+  res.json({ ok: true, key: k });
+});
+app.post('/api/key/rotate', async (req, res) => {
+  const acct = await billing.tierOf(req);
+  if (acct.tier !== 'pro' || !acct.email) return res.json({ ok: false });
+  res.json({ ok: true, key: await apiKeyCreate(acct.email) });
+});
+app.post('/api/v1/check', async (req, res) => {
+  const key = ((req.get('authorization') || '').replace(/^Bearer\s+/i, '').trim()) || String(req.get('x-api-key') || '').trim() || String(req.query.key || '').trim();
+  if (!key) return res.status(401).json({ error: 'Missing API key. Send Authorization: Bearer <key>.' });
+  const email = await apiKeyEmail(key);
+  if (!email || !(await billing.isPro(email))) return res.status(403).json({ error: 'Invalid key, or the account is not Pro.' });
+  if (!(await allow('apikey', key, 120, 600))) return res.status(429).json({ error: 'Rate limit reached (120 requests / 10 min).' });
+  const text = String((req.body && req.body.text) || '').trim().slice(0, 1000);
+  if (text.length < 4) return res.status(400).json({ error: 'Provide { "text": "<claim, headline, or question>" }.' });
+  try {
+    const cls = (ai && ai.analyzeClaim) ? await ai.analyzeClaim({ tier: 'pro', text }).catch(() => null) : null;
+    const r = await claims.analyze(text, cls, 'pro');
+    res.json({ ok: true, query: text, read: (r && r.read) || null, sources: (r && r.sources && r.sources.items) ? r.sources.items.slice(0, 8) : [] });
+  } catch (e) { res.status(500).json({ error: 'Check failed — try again.' }); }
+});
+app.get('/developers', async (req, res) => {
+  const base = `${req.protocol}://${req.get('host')}`;
+  const esc = t => (t == null ? '' : String(t)).replace(/[<>&"]/g, c => ({ '<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;' }[c]));
+  const acct = await billing.tierOf(req);
+  let keyBlock;
+  if (acct.tier === 'pro' && acct.email) {
+    let k = await apiKeyGet(acct.email); if (!k) k = await apiKeyCreate(acct.email);
+    keyBlock = `<div class="card" style="padding:16px;margin:14px 0"><div class="n">Your API key</div><div class="rd" style="font-family:ui-monospace,monospace;word-break:break-all;margin-top:6px;color:var(--ink)">${esc(k)}</div><div class="dim" style="margin-top:8px">Keep it secret. If it leaks, POST /api/key/rotate while signed in to replace it.</div></div>`;
+  } else if (acct.email) {
+    keyBlock = `<div class="note">The API is a <b>Pro</b> feature. <a href="${base}/" style="color:var(--signal);font-weight:600">Upgrade to Pro</a> to get your key.</div>`;
+  } else {
+    keyBlock = `<div class="note">Sign in as a Pro member to get your API key.</div>`;
+  }
+  const body = `<div class="article"><a class="article-back" href="${base}/">← Relity</a><h1 class="article-h1">Relity API</h1><p class="article-by">Evidence, not verdicts — programmatically.</p><p>Send a claim, headline, or question; get Relity's evidence read back as JSON — the consensus badge, the reasoning, and where it appears. Pro members get an API key.</p>${keyBlock}<h2>Endpoint</h2><p><code>POST ${base}/api/v1/check</code><br>Header: <code>Authorization: Bearer YOUR_KEY</code><br>Body: <code>{ "text": "..." }</code></p><h2>Example</h2><pre style="background:#0d1117;color:#e6edf3;padding:14px;border-radius:10px;overflow:auto;font-size:13px;line-height:1.5">curl -X POST ${base}/api/v1/check \\
+  -H "Authorization: Bearer YOUR_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{"text":"the great wall of china is visible from space"}'</pre><h2>Response</h2><p>JSON with <code>read</code> (badge · line · level — the evidence-weighed consensus) and <code>sources</code> (where it appears). Rate limit: 120 requests / 10 minutes per key.</p><p class="dim">Evidence, not a verdict — the read is one input; you and your users make the call.</p></div>`;
+  res.send(page('Relity API — Developers', body, base, null, true));
+});
+
 app.get('/why-ai-video-detectors-fail', (req, res) => {
   const base = `${req.protocol}://${req.get('host')}`;
   const og = `
