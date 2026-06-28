@@ -708,6 +708,8 @@ function buildSynthesis(r){
   const reachOK = !!(r.reverse && r.reverse.connected && !r.reverse.degraded && !r.reverse.limited);
   const di = reachOK ? interpretDomains(r.reverse.domains) : { flag:null, found:false, examined:false };
   const count = reachOK ? (r.reverse.count || 0) : 0;
+  const vintage = reachOK ? vintageYear(r.reverse.earliest) : null;
+  const mismatch = (r.claim && r.claim.mismatch && r.claim.mismatch.is) ? r.claim.mismatch.year : null;
   let media = null;
   const t = String((r.aiRead && r.aiRead.text) || '');
   const m = t.match(/READ:\s*([^\n·•]+?)\s*[·•]\s*(\d{1,3})\s*%/i);
@@ -719,6 +721,7 @@ function buildSynthesis(r){
       : 'The closest AI look was inconclusive on this frame.';
     if(reachOK && count>0) line += ' It’s circulating across ' + spreadPhrase(count) + ' online.';
     else if(r.reverse && r.reverse.limited) line += ' (Live web cross-check wasn’t run — free daily limit.)';
+    if(vintage && !mismatch) line += ' It has been online since ' + vintage + ', so be wary of any caption calling it recent or breaking.';
     media = { label: m[1].trim(), pct: parseInt(m[2],10), lean: lean || 'inconclusive', line };
   }
   // CLAIM AXIS — adapts to what the caption actually is (uses the claim classifier when present)
@@ -735,12 +738,17 @@ function buildSynthesis(r){
       claimAxis = 'No specific factual claim to verify here — treat it as commentary.';
     } else if(debunked){
       claimAxis = 'Fact-checkers have already addressed this claim — read their finding below.';
+    } else if(mismatch){
+      claimAxis = 'The caption presents this as current, but the image has been online since ' + mismatch + ' — a real, older photo paired with a false new caption (the classic recontextualization).';
     } else if(cr && cr.knownStatus === 'contradicted' && cr.correction){
       claimAxis = 'This runs against the established record: ' + clip(cr.correction,200);
     } else if(di.flag === 'news'){
       claimAxis = 'It’s carried by credible news outlets — consistent with a real event, though verify the exact context.';
     } else {
       claimAxis = 'No credible newsroom or fact-check surfaced for this claim — not proof either way, but a real news event usually shows up in reporting.';
+      if(media && media.lean === 'real'){
+        claimAxis += ' The photo itself looks real, but that doesn’t confirm the claim — a genuine or unrelated image is often attached to an unverified story.';
+      }
     }
   }
   if(!seeing && !media && !claimAxis) return null;
