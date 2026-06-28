@@ -1569,4 +1569,53 @@ async function watchTick() {
     await new Promise(r => setTimeout(r, 200));
   }
 }
-app.listen(PORT, () => { console.log(`Relity running on http://localhost:${PORT}`); telegram.register(); setInterval(nlTick, 5 * 60 * 1000); setInterval(watchTick, 3 * 60 * 60 * 1000); });
+// ---- X (Twitter) auto-post: a daily post of the top corroborated story ----
+const x = require('./x.js');
+const memX = {};
+async function xDayGet(){ if(redisOn){ try{ const v=await redisCmd(['GET','relity:x:day']); if(v) return v; }catch(e){} } return memX.day||null; }
+async function xDaySet(d){ memX.day=d; if(redisOn){ try{ await redisCmd(['SET','relity:x:day',d,'EX','172800']); }catch(e){} } }
+async function xLastGet(){ if(redisOn){ try{ const v=await redisCmd(['GET','relity:x:last']); if(v) return v; }catch(e){} } return memX.last||null; }
+async function xLastSet(l){ memX.last=l; if(redisOn){ try{ await redisCmd(['SET','relity:x:last',l,'EX','604800']); }catch(e){} } }
+function xEnabled(){ return process.env.X_AUTOPOST_ENABLED==='1' || process.env.X_AUTOPOST_ENABLED==='true'; }
+function xHour(){ const h=parseInt(process.env.X_AUTOPOST_HOUR||'15',10); return (h>=0&&h<=23)?h:15; }
+async function buildDailyXPost(){
+  let data; try{ data=news.peek(); if(!data || !data.clusters || !data.clusters.length){ data=await news.getFeed(); } }catch(e){ try{ data=news.peek(); }catch(_){ data={clusters:[]}; } }
+  const corrob=(data.clusters||[]).filter(c=>c.n>=2 && c.rep && c.rep.title);
+  if(!corrob.length) return null;
+  const last=await xLastGet();
+  let pick=corrob[0];
+  if(last && pick.rep && pick.rep.link===last && corrob[1]) pick=corrob[1];
+  const head=clip(pick.rep.title,130);
+  const text='🔎 '+pick.n+' independent newsrooms are corroborating right now:\n\n“'+head+'”\n\nWhat’s confirmed vs what’s just loud → '+BASE+'/feed';
+  return { text, link:(pick.rep&&pick.rep.link)||'', n:pick.n };
+}
+async function xTick(){
+  try{
+    if(!x.configured() || !xEnabled()) return;
+    const now=new Date();
+    if(now.getUTCHours()!==xHour()) return;
+    const day=now.toISOString().slice(0,10);
+    if((await xDayGet())===day) return;
+    const built=await buildDailyXPost();
+    if(!built) return;
+    await xDaySet(day); // mark before posting so overlapping ticks can't double-post
+    const r=await x.postTweet(built.text);
+    if(r.ok){ await xLastSet(built.link); console.log('X auto-post ok', r.id); }
+    else console.error('X auto-post failed:', r.error);
+  }catch(e){ console.error('xTick:', e.message); }
+}
+app.get('/api/x/preview', async (req,res) => {
+  if(!isAdmin(req)) return res.status(403).json({ error:'owner only' });
+  const built=await buildDailyXPost();
+  res.json({ ok:!!built, configured:x.configured(), enabled:xEnabled(), hourUTC:xHour(), chars: built?[...built.text].length:0, text: built?built.text:null });
+});
+app.get('/api/x/test', async (req,res) => {
+  if(!isAdmin(req)) return res.status(403).json({ error:'owner only' });
+  if(!x.configured()) return res.json({ ok:false, error:'X API not configured — add the four X_* env vars in Render.' });
+  const built=await buildDailyXPost();
+  if(!built) return res.json({ ok:false, error:'No corroborated story cached yet — try again in a minute.' });
+  const r=await x.postTweet(built.text);
+  res.json({ ok:!!r.ok, id:r.id||null, error:r.error||null, text:built.text });
+});
+
+app.listen(PORT, () => { console.log(`Relity running on http://localhost:${PORT}`); telegram.register(); setInterval(nlTick, 5 * 60 * 1000); setInterval(watchTick, 3 * 60 * 60 * 1000); setInterval(xTick, 5 * 60 * 1000); });
