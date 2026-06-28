@@ -164,6 +164,11 @@
   .fileinfo-btn.on{background:var(--signal-wash);color:var(--signal);border-color:var(--signal-line)}
   .fileinfo-btn svg{width:16px;height:16px}
   .fileinfo{margin-top:10px}
+  .paste-help-toggle{background:none;border:none;color:var(--signal);font-family:var(--display);font-weight:600;font-size:13px;cursor:pointer;margin:12px auto 0;display:block;padding:4px}
+  .paste-help{max-width:520px;margin:8px auto 0;text-align:left;background:var(--signal-wash);border:1px solid var(--signal-line);border-radius:12px;padding:14px 16px}
+  .paste-help .ph-row{display:flex;gap:10px;align-items:flex-start;margin:0 0 9px;font-size:13.5px;line-height:1.5;color:var(--graphite)}
+  .paste-help .ph-num{flex:none;width:20px;height:20px;border-radius:50%;background:var(--signal);color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;font-family:var(--display)}
+  .paste-help .ph-note{font-size:12.5px;color:var(--faint);font-style:italic;margin-top:4px}
   .factchip{font-family:var(--mono);font-size:11.5px;color:var(--graphite);background:var(--paper);border:1px solid var(--line);border-radius:7px;padding:4px 9px}
   .factchip.hash{color:var(--signal);border-color:var(--signal-line);background:var(--signal-wash)}
 
@@ -338,6 +343,13 @@
     <div id="videoOut" style="margin-top:14px"></div>
 
     <p class="reassure">No sign-up · your image never leaves your device for the file checks</p>
+    <button id="pasteHelpToggle" type="button" class="paste-help-toggle">Checking a post from X, Instagram, or Facebook? ›</button>
+    <div id="pasteHelp" class="paste-help" style="display:none">
+      <div class="ph-row"><span class="ph-num">1</span><div><b>Best — paste the image.</b> On the post, right-click (desktop) or long-press (phone) the photo → <b>Copy image</b>, then paste here with <b>Ctrl/⌘V</b>.</div></div>
+      <div class="ph-row"><span class="ph-num">2</span><div><b>Or screenshot it</b> and drop the image file in the box above.</div></div>
+      <div class="ph-row"><span class="ph-num">3</span><div><b>Just a claim or headline?</b> Paste the text itself — no link needed.</div></div>
+      <div class="ph-note">X &amp; Instagram block reading a post straight from its link, so the image or the text works best.</div>
+    </div>
     <p class="tip" style="margin-top:8px"><a href="/feed" style="color:var(--signal);font-weight:600;text-decoration:none">News feed</a> &middot; <a href="/radar" style="color:var(--signal);font-weight:600;text-decoration:none">Radar</a> &middot; <a href="/trending" style="color:var(--signal);font-weight:600;text-decoration:none">Trending checks</a> · <a href="/why-ai-video-detectors-fail" style="color:var(--signal);font-weight:600;text-decoration:none">Why AI video fools detectors</a> &middot; <a href="https://t.me/RelityCheck_bot" target="_blank" rel="noopener" style="color:var(--signal);font-weight:600;text-decoration:none">Telegram bot</a> &middot; <a href="/developers" style="color:var(--signal);font-weight:600;text-decoration:none">API</a> &middot; <a href="/history" style="color:var(--signal);font-weight:600;text-decoration:none">History</a></p>
     <p class="tip">Copy <b>any image or link</b> from anywhere, then paste it here — <b>Ctrl / ⌘ V</b>.</p>
     <p class="tip" id="acctLine" style="margin-top:10px"></p>
@@ -901,7 +913,7 @@ function renderLinkRead(p){
   var body='';
   if(p.cc && p.cc.read){ var _cr=Object.assign({},p.cc.read,{eyebrow:'The poster’s claim — checked'}); body = claimBanner(_cr) + sourceList(p.cc.sources); }
   else if(p.checking){ body = '<div class="sec" style="margin-bottom:6px">The poster’s claim</div>' + (capTxt?'<div class="card" style="margin-bottom:8px"><div class="row-read">'+capTxt+'</div></div>':'') + '<p class="tip">Checking the claim against the evidence…</p>'; }
-  else if(p.blocked){ body = '<div class="read-banner r-amber" style="border-radius:13px"><div class="rb-eyebrow">Couldn’t read this link</div><div class="rb-badge"><span class="dotb"></span>Use the file or the extension</div><div class="rb-line">'+esc(p.note||'')+'</div></div>'; }
+  else if(p.blocked){ body = '<div class="read-banner r-amber" style="border-radius:13px"><div class="rb-eyebrow">Couldn’t read this link</div><div class="rb-badge"><span class="dotb"></span>Paste the image instead</div><div class="rb-line">'+esc(p.note||'')+' Most reliable: copy the <b>image</b> from the post (right-click / long-press → Copy image) and paste it here with <b>Ctrl/⌘V</b> — or screenshot it and drop the file above.</div></div>'; }
   var note = (p.note && !p.blocked) ? '<p class="tip" style="margin-top:8px">'+esc(p.note)+'</p>' : '';
   return where + body + note;
 }
@@ -1034,7 +1046,7 @@ function showResultDash(read, sources){
   var d=$('#resultDash'); if(d){ d.style.display=''; try{ d.scrollIntoView({behavior:'smooth',block:'start'}); }catch(_){ window.scrollTo({top:0}); } }
 }
 function reset(){dossier.classList.remove('show');document.body.classList.remove('has-result');$('#submitPanel').style.display='';$('#linkInput').value='';const cap=$('#captionInput');if(cap)cap.value='';fileInput.value='';var _co=document.getElementById('claimOut');if(_co)_co.innerHTML='';var _vo=document.getElementById('videoOut');if(_vo)_vo.innerHTML='';var _cv2=document.getElementById('captionVerdict');if(_cv2)_cv2.innerHTML='';var _sc=document.getElementById('synthCard');if(_sc)_sc.innerHTML='';var _fi=document.getElementById('fileInfo');if(_fi)_fi.style.display='none';var _fib2=document.getElementById('fileInfoBtn');if(_fib2)_fib2.classList.remove('on');var _rd2=document.getElementById('resultDash');if(_rd2)_rd2.style.display='none';pendingLinkRead=null;window.scrollTo({top:0,behavior:'smooth'});}
-$('#againBtn').addEventListener('click',reset); $('#resetBtn').addEventListener('click',reset);var _cda=$('#cdAgain');if(_cda)_cda.addEventListener('click',reset);var _fib=document.getElementById('fileInfoBtn');if(_fib)_fib.addEventListener('click',function(){var fi=document.getElementById('fileInfo');if(!fi)return;var open=fi.style.display!=='none';fi.style.display=open?'none':'block';_fib.classList.toggle('on',!open);_fib.setAttribute('aria-expanded',open?'false':'true');});
+$('#againBtn').addEventListener('click',reset); $('#resetBtn').addEventListener('click',reset);var _cda=$('#cdAgain');if(_cda)_cda.addEventListener('click',reset);var _fib=document.getElementById('fileInfoBtn');if(_fib)_fib.addEventListener('click',function(){var fi=document.getElementById('fileInfo');if(!fi)return;var open=fi.style.display!=='none';fi.style.display=open?'none':'block';_fib.classList.toggle('on',!open);_fib.setAttribute('aria-expanded',open?'false':'true');});var _pht=document.getElementById('pasteHelpToggle');if(_pht)_pht.addEventListener('click',function(){var ph=document.getElementById('pasteHelp');if(!ph)return;var open=ph.style.display!=='none';ph.style.display=open?'none':'block';_pht.textContent=open?'Checking a post from X, Instagram, or Facebook? ›':'Checking a post from X, Instagram, or Facebook? ⌄';});
 $('#copyBtn').addEventListener('click',()=>{const t=$('#shareUrl').textContent;navigator.clipboard?.writeText(t).then(()=>{const b=$('#copyBtn'),o=b.textContent;b.textContent='Copied';setTimeout(()=>b.textContent=o,1400);});});
 
 /* badge reflects mode */
