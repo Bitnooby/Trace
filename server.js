@@ -1586,7 +1586,7 @@ async function buildDailyXPost(){
   let pick=corrob[0];
   if(last && pick.rep && pick.rep.link===last && corrob[1]) pick=corrob[1];
   const head=clip(pick.rep.title,130);
-  const text='🔎 '+pick.n+' independent newsrooms are corroborating right now:\n\n“'+head+'”\n\nWhat’s confirmed vs what’s just loud → '+BASE+'/feed';
+  const text='📰 '+head+'\n\nReported by '+pick.n+' independent newsrooms right now — corroborated, not just viral.\n\nWhat’s confirmed vs what’s just loud → '+BASE+'/feed';
   return { text, link:(pick.rep&&pick.rep.link)||'', n:pick.n };
 }
 async function xTick(){

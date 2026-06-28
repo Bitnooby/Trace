@@ -19,7 +19,20 @@ const FEEDS = [
   { outlet: 'Guardian', cat: 'tech',     url: 'https://www.theguardian.com/technology/rss' },
   { outlet: 'Guardian', cat: 'business', url: 'https://www.theguardian.com/business/rss' },
   { outlet: 'Guardian', cat: 'science',  url: 'https://www.theguardian.com/science/rss' },
-  { outlet: 'Al Jazeera', cat: 'world',  url: 'https://www.aljazeera.com/xml/rss/all.xml' }
+  { outlet: 'Al Jazeera', cat: 'world',  url: 'https://www.aljazeera.com/xml/rss/all.xml' },
+  { outlet: 'CNN',      cat: 'world',    url: 'http://rss.cnn.com/rss/cnn_world.rss' },
+  { outlet: 'CNN',      cat: 'tech',     url: 'http://rss.cnn.com/rss/cnn_tech.rss' },
+  { outlet: 'CNN',      cat: 'business', url: 'http://rss.cnn.com/rss/money_latest.rss' },
+  { outlet: 'CBS News', cat: 'world',    url: 'https://www.cbsnews.com/latest/rss/world' },
+  { outlet: 'CBS News', cat: 'tech',     url: 'https://www.cbsnews.com/latest/rss/technology' },
+  { outlet: 'CBS News', cat: 'business', url: 'https://www.cbsnews.com/latest/rss/moneywatch' },
+  { outlet: 'CBS News', cat: 'science',  url: 'https://www.cbsnews.com/latest/rss/science' },
+  { outlet: 'NBC News', cat: 'world',    url: 'https://feeds.nbcnews.com/nbcnews/public/world' },
+  { outlet: 'NBC News', cat: 'tech',     url: 'https://feeds.nbcnews.com/nbcnews/public/tech-and-science' },
+  { outlet: 'NBC News', cat: 'business', url: 'https://feeds.nbcnews.com/nbcnews/public/business' },
+  { outlet: 'ABC News', cat: 'world',    url: 'https://abcnews.go.com/abcnews/internationalheadlines' },
+  { outlet: 'ABC News', cat: 'tech',     url: 'https://abcnews.go.com/abcnews/technologyheadlines' },
+  { outlet: 'ABC News', cat: 'business', url: 'https://abcnews.go.com/abcnews/businessheadlines' }
 ];
 const OUTLETS = [...new Set(FEEDS.map(f => f.outlet))];
 const CATS = ['world', 'tech', 'business', 'science'];
