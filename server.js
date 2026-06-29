@@ -1602,9 +1602,12 @@ async function buildDailyXPost(){
   let data; try{ data=news.peek(); if(!data || !data.clusters || !data.clusters.length){ data=await news.getFeed(); } }catch(e){ try{ data=news.peek(); }catch(_){ data={clusters:[]}; } }
   const corrob=(data.clusters||[]).filter(c=>c.n>=2 && c.rep && c.rep.title);
   if(!corrob.length) return null;
+  const now=Date.now();
+  const hot=c=>{ const ageH=Math.max(0,(now-(c.ts||now))/3600000); const recency=Math.exp(-ageH/16); return c.n*(0.35+0.65*recency); }; // corroboration weighted by freshness
+  const ranked=corrob.slice().sort((a,b)=>hot(b)-hot(a));
   const last=await xLastGet();
-  let pick=corrob[0];
-  if(last && pick.rep && pick.rep.link===last && corrob[1]) pick=corrob[1];
+  let pick=ranked[0];
+  if(last && pick.rep && pick.rep.link===last && ranked[1]) pick=ranked[1];
   const head=clip(pick.rep.title,130);
   const text='📰 '+head+'\n\nReported by '+pick.n+' independent newsrooms right now — corroborated, not just viral.\n\nWhat’s confirmed vs what’s just loud → '+BASE+'/feed';
   return { text, link:(pick.rep&&pick.rep.link)||'', n:pick.n };
