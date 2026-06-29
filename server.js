@@ -1610,7 +1610,7 @@ async function buildDailyXPost(){
   if(last && pick.rep && pick.rep.link===last && ranked[1]) pick=ranked[1];
   const head=clip(pick.rep.title,130);
   const text='📰 '+head+'\n\nReported by '+pick.n+' independent newsrooms right now — corroborated, not just viral.\n\nWhat’s confirmed vs what’s just loud → '+BASE+'/feed';
-  return { text, link:(pick.rep&&pick.rep.link)||'', n:pick.n };
+  return { text, link:(pick.rep&&pick.rep.link)||'', n:pick.n, title:(pick.rep&&pick.rep.title)||'', cat:pick.cat||'' };
 }
 async function xTick(){
   try{
@@ -1643,6 +1643,34 @@ app.get('/api/x/test', async (req,res) => {
 
 // ---- Auto-post fan-out: same daily corroborated story to X + Facebook + Threads ----
 const meta = require('./meta.js');
+const card = require('./card.js');
+let _cardCache = { key:null, buf:null };
+async function dailyCardImg(built){
+  try{
+    if(!built) built = await buildDailyXPost();
+    if(!built || !built.title || !card.available()) return null;
+    const key = built.title + '|' + built.n;
+    if(_cardCache.buf && _cardCache.key === key) return _cardCache.buf;
+    const buf = card.renderCard({ title:built.title, n:built.n, cat:built.cat });
+    _cardCache = { key, buf };
+    return buf;
+  }catch(e){ console.error('card render:', e.message); return null; }
+}
+function igCaption(built){
+  const head = (built && built.title) || '';
+  const n = (built && built.n) || 0;
+  return '\uD83D\uDCF0 '+head+'\n\nReported by '+n+' independent newsrooms right now \u2014 corroborated, not just viral.\n\nSee what\u2019s confirmed vs what\u2019s just loud \u2192 relity.ai/feed\n\n#news #factcheck #medialiteracy #misinformation #verifybeforeyoushare #Relity';
+}
+function igEnabled(){ return process.env.IG_AUTOPOST_ENABLED==='1' || process.env.IG_AUTOPOST_ENABLED==='true'; }
+app.get('/card/daily.jpg', async (req,res) => {
+  try{
+    const buf = await dailyCardImg();
+    if(!buf) return res.status(404).type('text').send('no card available yet');
+    res.set('Content-Type','image/jpeg');
+    res.set('Cache-Control','public, max-age=600');
+    res.send(buf);
+  }catch(e){ res.status(500).type('text').send('card error'); }
+});
 function fbEnabled(){ return process.env.FB_AUTOPOST_ENABLED==='1' || process.env.FB_AUTOPOST_ENABLED==='true'; }
 function thEnabled(){ return process.env.THREADS_AUTOPOST_ENABLED==='1' || process.env.THREADS_AUTOPOST_ENABLED==='true'; }
 async function chDayGet(ch){ const k='relity:ap:'+ch+':day'; if(redisOn){ try{ const v=await redisCmd(['GET',k]); if(v) return v; }catch(e){} } return memX['day_'+ch]||null; }
@@ -1658,6 +1686,7 @@ async function autoPostTick(){
       { name:'x',  on: x.configured() && xEnabled(),      post: ()=>x.postTweet(built.text) },
       { name:'fb', on: meta.fbConfigured() && fbEnabled(), post: ()=>meta.postFacebook(built.text, built.link) },
       { name:'th', on: meta.thConfigured() && thEnabled(), post: ()=>meta.postThreads(built.text) },
+      { name:'ig', on: meta.igConfigured() && igEnabled(), post: async ()=>{ const buf=await dailyCardImg(built); if(!buf) return {ok:false,error:'no card image'}; const day=new Date().toISOString().slice(0,10); return meta.postInstagram(igCaption(built), BASE+'/card/daily.jpg?d='+day); } },
     ];
     let posted=false;
     for(const ch of channels){
@@ -1678,7 +1707,8 @@ app.get('/api/autopost', async (req,res) => {
     channels:{
       x:{ configured:x.configured(), enabled:xEnabled() },
       facebook:{ configured:meta.fbConfigured(), enabled:fbEnabled() },
-      threads:{ configured:meta.thConfigured(), enabled:thEnabled() }
+      threads:{ configured:meta.thConfigured(), enabled:thEnabled() },
+      instagram:{ configured:meta.igConfigured(), enabled:igEnabled() }
     } });
 });
 app.get('/api/autopost/test', async (req,res) => {
@@ -1690,8 +1720,9 @@ app.get('/api/autopost/test', async (req,res) => {
   if(ch==='x') r=await x.postTweet(built.text);
   else if(ch==='fb'||ch==='facebook') r=await meta.postFacebook(built.text, built.link);
   else if(ch==='th'||ch==='threads') r=await meta.postThreads(built.text);
-  else return res.json({ ok:false, error:'add ?ch=x | fb | threads' });
-  res.json({ ok:!!(r&&r.ok), id:(r&&r.id)||null, error:(r&&r.error)||null, channel:ch, text:built.text });
+  else if(ch==='ig'||ch==='instagram'){ const buf=await dailyCardImg(built); if(!buf){ r={ok:false,error:'no card image — renderer or story missing'}; } else { const day=new Date().toISOString().slice(0,10); r=await meta.postInstagram(igCaption(built), BASE+'/card/daily.jpg?d='+day); } }
+  else return res.json({ ok:false, error:'add ?ch=x | fb | threads | ig' });
+  res.json({ ok:!!(r&&r.ok), id:(r&&r.id)||null, error:(r&&r.error)||null, channel:ch, text: (ch==='ig'||ch==='instagram')?igCaption(built):built.text });
 });
 
 app.listen(PORT, () => { console.log(`Relity running on http://localhost:${PORT}`); telegram.register(); setInterval(nlTick, 5 * 60 * 1000); setInterval(watchTick, 3 * 60 * 60 * 1000); setInterval(autoPostTick, 5 * 60 * 1000); });
