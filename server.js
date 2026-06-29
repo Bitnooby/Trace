@@ -1455,11 +1455,31 @@ function nlStoriesFor(cats) {
   return cl.slice(0, 10).map(c => ({ title: c.rep.title, link: c.rep.link, n: c.n, cat: c.cat }));
 }
 function nlEmailHtml(stories, cats, unsubUrl, trends) {
+  const scope = cats.includes('general') ? '' : ' · ' + escH(cats.join(', '));
   const items = stories.map(s => `<tr><td style="padding:11px 0;border-top:1px solid #E4E9F1"><span style="display:inline-block;background:${s.n>=3?'#2E7D5A':'#3C5E8A'};color:#fff;font-size:11px;font-weight:700;border-radius:20px;padding:2px 8px">${s.n} outlets</span> <a href="${escH(s.link)}" style="color:#131722;text-decoration:none;font-weight:600;font-size:15px">${escH(s.title)}</a></td></tr>`).join('');
-  const scope = cats.includes('general') ? '' : ' in ' + escH(cats.join(', '));
-  const tItems = (trends || []).slice(0, 5).map(t => `<tr><td style="padding:9px 0;border-top:1px solid #EFEADF"><a href="${escH(t.url || BASE + '/')}" style="color:#556074;text-decoration:none;font-size:14px"><b style="color:#131722">${escH(t.term)}</b>${t.headline ? ' — ' + escH(t.headline) : ''}</a></td></tr>`).join('');
-  const tSection = tItems ? `<div style="margin-top:24px"><div style="font-weight:700;font-size:14px;color:#8A6A2E">🔥 Trending now <span style="font-size:10px;font-weight:600;background:#F3ECDE;border-radius:20px;padding:2px 7px">UNVERIFIED</span></div><div style="color:#556074;font-size:12px;margin:3px 0 2px">What's buzzing right now — loud, not checked. Verify before you share.</div><table style="width:100%;border-collapse:collapse">${tItems}</table><div style="margin-top:11px"><a href="${BASE}/" style="color:#8A6A2E;font-weight:600;text-decoration:none;font-size:13px">See what else is trending →</a></div></div>` : '';
-  return `<div style="font-family:system-ui,Segoe UI,Arial,sans-serif;max-width:560px;margin:auto;padding:24px;color:#131722"><div style="font-weight:700;font-size:20px;color:#0B6E6E">Relity — Corroborated news</div><div style="color:#556074;font-size:13px;margin:4px 0 16px">What multiple independent newsrooms are carrying right now${scope}. Breadth of reporting, not a verdict — open any story to read and decide.</div><table style="width:100%;border-collapse:collapse">${items}</table>${tSection}<div style="margin-top:18px"><a href="${BASE}/feed" style="color:#0B6E6E;font-weight:600;text-decoration:none">See the full feed →</a></div><div style="color:#8A95A4;font-size:11px;margin-top:22px;border-top:1px solid #E4E9F1;padding-top:12px">You subscribed at relity.ai. <a href="${unsubUrl}" style="color:#8A95A4">Unsubscribe</a>.</div></div>`;
+  const tItems = (trends || []).slice(0, 5).map(t => `<tr><td style="padding:9px 0;border-top:1px solid #F1E2DE"><a href="${escH(t.url || BASE + '/')}" style="color:#556074;text-decoration:none;font-size:14px"><b style="color:#131722">${escH(t.term)}</b>${t.headline ? ' — ' + escH(t.headline) : ''}</a></td></tr>`).join('');
+  const circulating = tItems ? `
+    <div style="margin-top:26px">
+      <div style="font-weight:700;font-size:15px;color:#B4472E">&#128269; Circulating &mdash; check before you share <span style="font-size:10px;font-weight:600;background:#F6E4DE;border-radius:20px;padding:2px 7px;vertical-align:middle">UNVERIFIED</span></div>
+      <div style="color:#556074;font-size:12.5px;margin:4px 0 2px">What&#39;s loud right now but <b>not</b> confirmed. Don&#39;t take it at face value &mdash; and check it before you pass it on.</div>
+      <table style="width:100%;border-collapse:collapse">${tItems}</table>
+    </div>` : '';
+  return `<div style="font-family:system-ui,Segoe UI,Arial,sans-serif;max-width:580px;margin:auto;padding:24px;color:#131722">
+    <div style="font-weight:700;font-size:21px;color:#0B6E6E;letter-spacing:.05em">RELITY</div>
+    <div style="color:#556074;font-size:13px;margin:3px 0 0">The evidence behind what you see &mdash; so you decide. <b style="color:#131722">Evidence, not verdicts.</b></div>
+    <div style="height:1px;background:#E4E9F1;margin:17px 0"></div>
+    <div style="font-weight:700;font-size:15px;color:#2E7D5A">&#9989; Confirmed &mdash; what newsrooms agree on${scope}</div>
+    <div style="color:#556074;font-size:12.5px;margin:4px 0 2px">Stories multiple independent newsrooms are carrying right now. Breadth of reporting, not proof &mdash; open any to read and decide.</div>
+    <table style="width:100%;border-collapse:collapse">${items}</table>
+    <div style="margin-top:11px"><a href="${BASE}/feed" style="color:#0B6E6E;font-weight:600;text-decoration:none;font-size:13px">See the full feed &rarr;</a></div>
+    ${circulating}
+    <div style="margin-top:26px;background:#F4F8F8;border:1px solid #D6E6E6;border-radius:12px;padding:16px">
+      <div style="font-weight:700;font-size:15px;color:#0B6E6E">&#128270; See something yourself?</div>
+      <div style="color:#3b4a57;font-size:13px;line-height:1.5;margin:5px 0 12px">A suspicious image, video, or post? Relity shows you the evidence &mdash; whether it&#39;s authentic, where it came from, and if it&#39;s AI &mdash; then you decide.</div>
+      <a href="${BASE}/" style="display:inline-block;background:#0B6E6E;color:#fff;font-weight:600;font-size:13.5px;text-decoration:none;padding:10px 17px;border-radius:9px">Check anything &rarr; relity.ai</a>
+    </div>
+    <div style="color:#8A95A4;font-size:11px;margin-top:22px;border-top:1px solid #E4E9F1;padding-top:12px">You subscribed at relity.ai. <a href="${unsubUrl}" style="color:#8A95A4">Unsubscribe</a>.</div>
+  </div>`;
 }
 async function nlSubsAll() {
   if (redisOn) { try { const v = await redisCmd(['HGETALL', 'relity:nl:subs']); if (Array.isArray(v)) { const out = []; for (let i = 0; i < v.length; i += 2) out.push([v[i], v[i + 1]]); return out; } if (v && typeof v === 'object') return Object.entries(v); } catch (e) { console.error('nlSubsAll:', e.message); } }
@@ -1475,7 +1495,7 @@ async function sendNewsletter() {
     const stories = nlStoriesFor(cats);
     if (!stories.length) continue;
     const unsub = `${BASE}/unsubscribe?e=${encodeURIComponent(email)}&t=${nlToken(email)}`;
-    try { await billing.sendMail(email, 'Relity — corroborated news today', nlEmailHtml(stories, cats, unsub, trends)); sent++; } catch (e) { console.error('nl send:', e.message); }
+    try { await billing.sendMail(email, 'Relity — what’s confirmed, what to question', nlEmailHtml(stories, cats, unsub, trends)); sent++; } catch (e) { console.error('nl send:', e.message); }
     await new Promise(r => setTimeout(r, 150));
   }
   console.log('newsletter: sent ' + sent + '/' + subs.length);
@@ -1514,7 +1534,7 @@ app.get('/api/newsletter/test', async (req, res) => {
   const trends = await trendingNow();
   if (!stories.length) return res.json({ ok: false, error: 'no corroborated stories cached yet — try again in a minute' });
   const unsub = `${BASE}/unsubscribe?e=${encodeURIComponent(to)}&t=${nlToken(to)}`;
-  try { await billing.sendMail(to, 'Relity — sample corroborated-news digest', nlEmailHtml(stories, use, unsub, trends)); res.json({ ok: true, sent: 1, to, stories: stories.length }); }
+  try { await billing.sendMail(to, 'Relity — your trust briefing (sample)', nlEmailHtml(stories, use, unsub, trends)); res.json({ ok: true, sent: 1, to, stories: stories.length }); }
   catch (e) { res.json({ ok: false, error: String(e.message || e).slice(0, 200) }); }
 });
 // ---- Pro: watch a claim, alert when a fact-check/debunk appears ----
