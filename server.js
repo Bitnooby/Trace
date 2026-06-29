@@ -1638,4 +1638,57 @@ app.get('/api/x/test', async (req,res) => {
   res.json({ ok:!!r.ok, id:r.id||null, error:r.error||null, text:built.text });
 });
 
-app.listen(PORT, () => { console.log(`Relity running on http://localhost:${PORT}`); telegram.register(); setInterval(nlTick, 5 * 60 * 1000); setInterval(watchTick, 3 * 60 * 60 * 1000); setInterval(xTick, 5 * 60 * 1000); });
+// ---- Auto-post fan-out: same daily corroborated story to X + Facebook + Threads ----
+const meta = require('./meta.js');
+function fbEnabled(){ return process.env.FB_AUTOPOST_ENABLED==='1' || process.env.FB_AUTOPOST_ENABLED==='true'; }
+function thEnabled(){ return process.env.THREADS_AUTOPOST_ENABLED==='1' || process.env.THREADS_AUTOPOST_ENABLED==='true'; }
+async function chDayGet(ch){ const k='relity:ap:'+ch+':day'; if(redisOn){ try{ const v=await redisCmd(['GET',k]); if(v) return v; }catch(e){} } return memX['day_'+ch]||null; }
+async function chDaySet(ch,d){ memX['day_'+ch]=d; const k='relity:ap:'+ch+':day'; if(redisOn){ try{ await redisCmd(['SET',k,d,'EX','172800']); }catch(e){} } }
+async function autoPostTick(){
+  try{
+    const now=new Date();
+    if(now.getUTCHours()!==xHour()) return;
+    const day=now.toISOString().slice(0,10);
+    const built=await buildDailyXPost();
+    if(!built) return;
+    const channels=[
+      { name:'x',  on: x.configured() && xEnabled(),      post: ()=>x.postTweet(built.text) },
+      { name:'fb', on: meta.fbConfigured() && fbEnabled(), post: ()=>meta.postFacebook(built.text, built.link) },
+      { name:'th', on: meta.thConfigured() && thEnabled(), post: ()=>meta.postThreads(built.text) },
+    ];
+    let posted=false;
+    for(const ch of channels){
+      if(!ch.on) continue;
+      if((await chDayGet(ch.name))===day) continue;
+      await chDaySet(ch.name, day); // mark before posting so overlapping ticks can't double-post
+      const r=await ch.post();
+      if(r && r.ok){ posted=true; console.log('autopost '+ch.name+' ok', r.id||''); }
+      else console.error('autopost '+ch.name+' failed:', (r&&r.error)||'?');
+    }
+    if(posted) await xLastSet(built.link);
+  }catch(e){ console.error('autoPostTick:', e.message); }
+}
+app.get('/api/autopost', async (req,res) => {
+  if(!isAdmin(req)) return res.status(403).json({ error:'owner only' });
+  const built=await buildDailyXPost();
+  res.json({ ok:!!built, hourUTC:xHour(), chars:built?[...built.text].length:0, text:built?built.text:null,
+    channels:{
+      x:{ configured:x.configured(), enabled:xEnabled() },
+      facebook:{ configured:meta.fbConfigured(), enabled:fbEnabled() },
+      threads:{ configured:meta.thConfigured(), enabled:thEnabled() }
+    } });
+});
+app.get('/api/autopost/test', async (req,res) => {
+  if(!isAdmin(req)) return res.status(403).json({ error:'owner only' });
+  const ch=String(req.query.ch||'').toLowerCase();
+  const built=await buildDailyXPost();
+  if(!built) return res.json({ ok:false, error:'no corroborated story cached yet — try again in a minute' });
+  let r;
+  if(ch==='x') r=await x.postTweet(built.text);
+  else if(ch==='fb'||ch==='facebook') r=await meta.postFacebook(built.text, built.link);
+  else if(ch==='th'||ch==='threads') r=await meta.postThreads(built.text);
+  else return res.json({ ok:false, error:'add ?ch=x | fb | threads' });
+  res.json({ ok:!!(r&&r.ok), id:(r&&r.id)||null, error:(r&&r.error)||null, channel:ch, text:built.text });
+});
+
+app.listen(PORT, () => { console.log(`Relity running on http://localhost:${PORT}`); telegram.register(); setInterval(nlTick, 5 * 60 * 1000); setInterval(watchTick, 3 * 60 * 60 * 1000); setInterval(autoPostTick, 5 * 60 * 1000); });
