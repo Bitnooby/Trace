@@ -1769,6 +1769,15 @@ app.get('/api/figures', async (req,res) => {
   const post = figurePick();
   res.json({ ok:!!post, enabled:figEnabled(), post: post ? { figure:post.figure, handle:post.handle, platform:post.platform, ts:post.ts, eng:post.eng, url:post.url, text:post.text } : null, xText: post?figureText(post):null, igCaption: post?figureIgCaption(post):null });
 });
+app.get('/api/hot-social', async (req,res) => {
+  try{
+    await figures.getPosts();
+    const now=Date.now();
+    const ago=ts=>{ if(!ts) return ''; const m=Math.max(1,Math.round((now-ts)/60000)); if(m<60) return m+'m ago'; const h=Math.round(m/60); if(h<24) return h+'h ago'; return Math.round(h/24)+'d ago'; };
+    const posts=(figures.peek().posts||[]).filter(p=>(now-(p.ts||0))/3600000<=48).sort((a,b)=>figures.score(b,now)-figures.score(a,now)).slice(0,6);
+    res.json({ ok:true, items: posts.map(p=>({ handle:p.handle, figure:p.figure, platform:p.platform, text:clip(p.text,120), url:p.url, ago:ago(p.ts) })) });
+  }catch(e){ res.json({ ok:false, items:[] }); }
+});
 app.get('/onrecord', async (req,res) => {
   const base = `${req.protocol}://${req.get('host')}`;
   const e = t => (t==null?'':String(t)).replace(/[<>&"]/g, c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]));

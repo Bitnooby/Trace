@@ -373,7 +373,7 @@
     <p class="tip" id="loginMsg" style="display:none;margin-top:6px"></p>
     <p class="tip" id="iosHint" style="display:none;margin-top:8px"></p>
   </section>
-  <div class="rightcol"><aside class="newsRail" id="newsRail" aria-label="Corroborated news"></aside><aside class="newsRail trendRail" id="trendRail" aria-label="Trending now (unverified)"></aside></div>
+  <div class="rightcol"><aside class="newsRail" id="newsRail" aria-label="Corroborated news"></aside><aside class="newsRail trendRail" id="trendRail" aria-label="What’s hot in social media (unverified)"></aside></div>
   </div>
 
   <section class="panel" id="resultDash" style="display:none" aria-live="polite">
@@ -1009,16 +1009,14 @@ $('#linkInput').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefa
   var el=document.getElementById('trendRail'); if(!el) return;
   function enc(t){return String(t==null?'':t).replace(/[<>&"]/g,function(c){return {'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c];});}
   var ctl=new AbortController(),to=setTimeout(function(){ctl.abort();},6000);
-  fetch('/api/trending-now',{signal:ctl.signal}).then(function(r){clearTimeout(to);return r.json();}).then(function(d){
+  fetch('/api/hot-social',{signal:ctl.signal}).then(function(r){clearTimeout(to);return r.json();}).then(function(d){
     var s=(d&&d.items)||[];
     if(!s.length){ el.style.display='none'; return; }
     var rows=s.slice(0,6).map(function(x){
-      var head=x.headline||x.term;
-      var href=x.url||('https://www.google.com/search?q='+encodeURIComponent(x.term));
-      var meta=(x.source||'')+(x.traffic?' · '+x.traffic+' searches':'');
-      return '<a class="tn-item" href="'+enc(href)+'" target="_blank" rel="noopener noreferrer"><span class="tn-term">'+enc(x.term)+'</span><span class="tn-head">'+enc(head)+'</span>'+(meta.trim()?'<span class="tn-src">'+enc(meta)+'</span>':'')+'</a>';
+      var meta=(x.platform||'')+(x.ago?' · '+x.ago:'');
+      return '<a class="tn-item" href="'+enc(x.url||'#')+'" target="_blank" rel="noopener noreferrer"><span class="tn-term">'+enc(x.handle||x.figure||'')+'</span><span class="tn-head">'+enc(x.text||'')+'</span>'+(meta.trim()?'<span class="tn-src">'+enc(meta)+'</span>':'')+'</a>';
     }).join('');
-    el.innerHTML='<div class="nr-head"><span>🔥 Trending now</span><span class="tn-tag">unverified</span></div><div class="nr-sub">What’s buzzing right now — loud, not checked. Verify anything yourself above.</div>'+rows;
+    el.innerHTML='<div class="nr-head"><span>🔥🔥🔥 What’s hot in social media</span><span class="tn-tag">unverified</span></div><div class="nr-sub">Loud on social right now — claims, not confirmed news. Check anything yourself above.</div>'+rows;
   }).catch(function(){ el.style.display='none'; });
 })();
 /* if a full URL is pasted into the box, just run it */
