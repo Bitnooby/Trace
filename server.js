@@ -1697,7 +1697,8 @@ function figureIgCaption(post){
 app.get('/card/figure.jpg', async (req,res) => {
   try{
     await figures.getPosts();
-    const buf = dailyFigureImg();
+    let post=null; if(req.query.fid){ post=(figures.peek().posts||[]).find(p=>p.id===String(req.query.fid))||null; }
+    const buf = dailyFigureImg(post);
     if(!buf) return res.status(404).type('text').send('no figure post available yet');
     res.set('Content-Type','image/jpeg');
     res.set('Cache-Control','public, max-age=300');
@@ -1717,7 +1718,7 @@ app.get('/onrecord', async (req,res) => {
   const now=Date.now();
   const byFig={};
   for(const p of posts){ (byFig[p.figId]=byFig[p.figId]||[]).push(p); }
-  for(const k in byFig){ byFig[k].sort((a,b)=>figures.score(b,now)-figures.score(a,now)); }
+  for(const k in byFig){ byFig[k].sort((a,b)=>(b.ts||0)-(a.ts||0)); }
   const itemHtml = p => `<div style="background:#fff;border:1px solid var(--line);border-left:4px solid var(--signal);border-radius:12px;padding:15px 17px;margin:0 0 12px"><div style="font-size:12.5px;color:#8A95A4;font-family:'Space Grotesk',system-ui,sans-serif;font-weight:600;margin-bottom:8px">${e(figDate(p.ts))}</div><div style="font-size:15.5px;line-height:1.5;color:var(--ink);white-space:pre-wrap">${e(clip(p.text,560)).replace(/\n/g,'<br>')}</div><a href="${e(p.url)}" target="_blank" rel="noopener" style="display:inline-block;margin-top:10px;color:var(--signal);font-weight:600;font-size:13px;text-decoration:none">View the original →</a></div>`;
   const sections = figures.FIGURES.map(fig=>{
     const arr=(byFig[fig.id]||[]).slice(0,6);
@@ -1735,27 +1736,52 @@ app.get('/onrecord', async (req,res) => {
   const body = `<div class="thead"><h1 class="th1">On the Record</h1><p class="tsub">What public figures <b>actually posted</b> — verbatim, with the original linked. No sides: a verified statement from across the spectrum, straight from the source. <b>Evidence, not verdicts.</b> <a href="${base}/feed" style="color:var(--signal);font-weight:600;text-decoration:none">News feed →</a></p></div>${sections || `<p class="tempty">Fetching the latest posts — refresh in a moment.</p>`}<a class="cta" href="${base}/">Check anything →</a>`;
   res.send(page('Relity — On the Record', body, base, og, true));
 });
+async function figGet(k){ if(redisOn){ try{ const v=await redisCmd(['GET',k]); if(v!=null) return v; }catch(e){} } return memX[k]; }
+async function figSet(k,v,ex){ memX[k]=v; if(redisOn){ try{ await redisCmd(ex?['SET',k,String(v),'EX',String(ex)]:['SET',k,String(v)]); }catch(e){} } }
+const FIG_CAP = parseInt(process.env.FIGURE_MAX_PER_DAY||'3',10);
+const FIG_GAP_GLOBAL_MS = (parseInt(process.env.FIGURE_GLOBAL_GAP_MIN||'40',10))*60000;
+const FIG_GAP_FIG_MS = (parseInt(process.env.FIGURE_FIGURE_GAP_MIN||'180',10))*60000;
+const FIG_WINDOW_H = parseInt(process.env.FIGURE_WINDOW_HOURS||'24',10);
+// Prompt + capped: every tick, pick the single best eligible NEW post across figures and post it.
+// Per-figure daily cap + min interval, plus a global spacing so posts never burst.
 async function figureTick(){
   try{
     if(!figEnabled()) return;
-    const now=new Date();
-    if(now.getUTCHours()!==xHour()) return;
-    const day=now.toISOString().slice(0,10);
     await figures.getPosts();
-    const fp = figurePick();
-    if(!fp) return;
+    const now=Date.now();
+    const day=new Date().toISOString().slice(0,10);
+    const glast=parseInt(await figGet('relity:fig:glast')||'0',10);
+    if(now-glast < FIG_GAP_GLOBAL_MS) return;
+    const posts=(figures.peek().posts)||[];
+    let pick=null, pickFig=null, pickScore=-1;
+    for(const fig of figures.FIGURES){
+      const cnt=parseInt(await figGet('relity:fig:cnt:'+fig.id+':'+day)||'0',10);
+      if(cnt>=FIG_CAP) continue;
+      const flast=parseInt(await figGet('relity:fig:last:'+fig.id)||'0',10);
+      if(now-flast < FIG_GAP_FIG_MS) continue;
+      const cand=posts.filter(p=>p.figId===fig.id && (now-(p.ts||0))/3600000<=FIG_WINDOW_H)
+                      .sort((a,b)=>figures.score(b,now)-figures.score(a,now));
+      for(const c of cand){
+        if(await figGet('relity:fig:p:'+c.id)) continue;
+        const sc=figures.score(c,now);
+        if(sc>pickScore){ pick=c; pickFig=fig; pickScore=sc; }
+        break;
+      }
+    }
+    if(!pick) return;
+    const fp=pick;
     const chans=[
       { name:'figx',  on:x.configured(),     post:()=>x.postTweet(figureText(fp)) },
       { name:'figfb', on:meta.fbConfigured(), post:()=>meta.postFacebook(figureText(fp), fp.url) },
-      { name:'figig', on:meta.igConfigured(), post:async()=>{ const buf=dailyFigureImg(fp); if(!buf) return {ok:false,error:'no figure card'}; return meta.postInstagram(figureIgCaption(fp), BASE+'/card/figure.jpg?d='+day); } }
+      { name:'figig', on:meta.igConfigured(), post:async()=>{ const buf=dailyFigureImg(fp); if(!buf) return {ok:false,error:'no figure card'}; return meta.postInstagram(figureIgCaption(fp), BASE+'/card/figure.jpg?fid='+encodeURIComponent(fp.id)+'&d='+day); } }
     ];
-    for(const ch of chans){
-      if(!ch.on) continue;
-      if((await chDayGet(ch.name))===day) continue;
-      await chDaySet(ch.name, day);
-      const r=await ch.post();
-      if(r&&r.ok) console.log('figpost '+ch.name+' ok', r.id||'');
-      else console.error('figpost '+ch.name+' failed:', (r&&r.error)||'?');
+    let posted=false;
+    for(const ch of chans){ if(!ch.on) continue; const r=await ch.post(); if(r&&r.ok){ posted=true; console.log('figpost '+ch.name+' ok', r.id||''); } else console.error('figpost '+ch.name+' failed:', (r&&r.error)||'?'); }
+    if(posted){
+      await figSet('relity:fig:p:'+fp.id,'1',604800);
+      await figSet('relity:fig:cnt:'+pickFig.id+':'+day, String(parseInt(await figGet('relity:fig:cnt:'+pickFig.id+':'+day)||'0',10)+1), 172800);
+      await figSet('relity:fig:last:'+pickFig.id, String(now), 172800);
+      await figSet('relity:fig:glast', String(now), 86400);
     }
   }catch(e){ console.error('figureTick:', e.message); }
 }
@@ -1809,7 +1835,7 @@ app.get('/api/autopost/test', async (req,res) => {
     const fbuf=dailyFigureImg(fp);
     if(!fbuf) return res.json({ ok:false, error:'no figure card (renderer/story missing)' });
     const d2=new Date().toISOString().slice(0,10);
-    const fr=await meta.postInstagram(figureIgCaption(fp), BASE+'/card/figure.jpg?d='+d2);
+    const fr=await meta.postInstagram(figureIgCaption(fp), BASE+'/card/figure.jpg?fid='+encodeURIComponent(fp.id)+'&d='+d2);
     return res.json({ ok:!!(fr&&fr.ok), id:(fr&&fr.id)||null, error:(fr&&fr.error)||null, channel:'figure', source:fp.url, caption:figureIgCaption(fp) });
   }
   const built=await buildDailyXPost();
