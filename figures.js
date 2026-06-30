@@ -1,21 +1,25 @@
 'use strict';
 /* figures.js — primary-source posts from key public figures, across the spectrum.
-   We surface what they actually posted, verbatim, and link the original (the receipt).
-   No sides — a verified statement from everyone. Sources:
-     Trump   (Truth Social) -> CNN JSON archive (+ trumpstruth.org RSS fallback)
-     AOC/Newsom (Bluesky)   -> public AppView API (free, no auth)
-   Ranked by engagement (read rate) x recency. Built multi-figure: add to FIGURES to follow more. */
+   Verbatim, with the original linked (the receipt). No sides — a verified statement from everyone.
+     Trump    (Truth Social) -> CNN JSON archive (+ trumpstruth.org RSS fallback)   [free]
+     AOC      (X)            -> X API v2 user timeline                               [paid: Basic tier]
+     Araghchi (X)            -> X API v2 user timeline                               [paid: Basic tier]
+   X reads are throttled (X_POLL_MS) + capped (max_results) to respect the monthly read quota.
+   Bearer auto-derives from X_API_KEY/X_API_SECRET — no extra secret needed. */
 
 const FIGURES = [
-  { id:'trump',  name:'Donald J. Trump',            handle:'@realDonaldTrump',      platform:'Truth Social',
+  { id:'trump',    name:'Donald J. Trump',          handle:'@realDonaldTrump', platform:'Truth Social',
     json:'https://ix.cnn.io/data/truth-social/truth_archive.json', rss:'https://trumpstruth.org/feed' },
-  { id:'aoc',    name:'Alexandria Ocasio-Cortez',   handle:'@aoc.bsky.social',      platform:'Bluesky', bsky:'aoc.bsky.social' },
-  { id:'newsom', name:'Gavin Newsom',               handle:'@gavinnewsom.bsky.social', platform:'Bluesky', bsky:'gavinnewsom.bsky.social' }
+  { id:'aoc',      name:'Alexandria Ocasio-Cortez', handle:'@AOC',       platform:'X', x:'AOC' },
+  { id:'araghchi', name:'Abbas Araghchi',           handle:'@araghchi',  platform:'X', x:'araghchi' }
 ];
 
 const UA = { 'User-Agent': 'RelityRadar/1.0 (+https://relity.ai)' };
 const CACHE_MS = 5 * 60 * 1000;
+const X_POLL_MS = parseInt(process.env.FIGURE_X_POLL_MIN || '60', 10) * 60000;
+const X_MAX = Math.max(5, Math.min(100, parseInt(process.env.FIGURE_X_MAX || '5', 10)));
 let cache = { at: 0, posts: [] };
+let _xCache = { at: 0, posts: [] };
 
 function clean(s){
   return String(s || '')
@@ -33,7 +37,7 @@ function clean(s){
 function isSubstantive(t){
   t = (t || '').trim();
   if(t.length < 15) return false;
-  if(/^RT[:\s]/i.test(t)) return false;
+  if(/^RT[:\s@]/i.test(t)) return false;
   if(/^https?:\/\/\S+$/i.test(t)) return false;
   const words = t.replace(/https?:\/\/\S+/g, ' ').replace(/[^A-Za-z ]/g, ' ').split(/\s+/).filter(w => w.length > 2);
   return words.length >= 4;
@@ -50,7 +54,6 @@ async function fetchJson(fig){
     eng: (p.favourites_count || 0) + (p.reblogs_count || 0) + (p.replies_count || 0)
   })).filter(p => p.id && p.url);
 }
-
 function parseRss(xml, fig){
   const out = [];
   for(const raw of xml.split(/<item[\s>]/i).slice(1)){
@@ -63,7 +66,6 @@ function parseRss(xml, fig){
   }
   return out;
 }
-
 async function fetchBluesky(fig){
   const url = 'https://public.api.bsky.app/xrpc/app.bsky.feed.getAuthorFeed?actor=' + encodeURIComponent(fig.bsky) + '&limit=40&filter=posts_no_replies';
   const r = await fetch(url, { headers: UA, signal: AbortSignal.timeout(9000) });
@@ -71,20 +73,65 @@ async function fetchBluesky(fig){
   const j = await r.json();
   const out = [];
   for(const item of (j.feed || [])){
-    if(item.reason) continue;                                  // skip reposts (not their own words)
+    if(item.reason) continue;
     const p = item.post; if(!p || !p.record) continue;
-    if(p.author && p.author.handle !== fig.bsky) continue;     // own account only
-    if(p.record.reply) continue;                               // skip thread replies
+    if(p.author && p.author.handle !== fig.bsky) continue;
+    if(p.record.reply) continue;
     const rkey = String(p.uri || '').split('/').pop();
-    out.push({
-      figId: fig.id, figure: fig.name, handle: fig.handle, platform: fig.platform,
+    out.push({ figId: fig.id, figure: fig.name, handle: fig.handle, platform: fig.platform,
       id: p.uri, text: clean(p.record.text || ''),
       url: rkey ? ('https://bsky.app/profile/' + fig.bsky + '/post/' + rkey) : (p.uri || ''),
       ts: Date.parse(p.record.createdAt) || 0, media: [],
-      eng: (p.likeCount || 0) + (p.repostCount || 0) + (p.replyCount || 0)
-    });
+      eng: (p.likeCount || 0) + (p.repostCount || 0) + (p.replyCount || 0) });
   }
   return out;
+}
+
+let _bearer = null, _bearerAt = 0; const _xid = {};
+async function xBearer(){
+  if(_bearer && Date.now() - _bearerAt < 3 * 3600000) return _bearer;
+  const key = process.env.X_API_KEY || '', sec = process.env.X_API_SECRET || '';
+  if(!key || !sec) return null;
+  const basic = Buffer.from(encodeURIComponent(key) + ':' + encodeURIComponent(sec)).toString('base64');
+  const r = await fetch('https://api.twitter.com/oauth2/token', { method:'POST',
+    headers:{ 'Authorization':'Basic ' + basic, 'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8' },
+    body:'grant_type=client_credentials', signal: AbortSignal.timeout(9000) });
+  const j = await r.json().catch(() => ({}));
+  if(j && j.access_token){ _bearer = j.access_token; _bearerAt = Date.now(); return _bearer; }
+  return null;
+}
+async function xUserId(bearer, username){
+  if(_xid[username]) return _xid[username];
+  const r = await fetch('https://api.twitter.com/2/users/by/username/' + encodeURIComponent(username), { headers:{ 'Authorization':'Bearer ' + bearer }, signal: AbortSignal.timeout(9000) });
+  const j = await r.json().catch(() => ({}));
+  const id = j && j.data && j.data.id;
+  if(id) _xid[username] = id;
+  return id;
+}
+async function fetchX(fig){
+  const bearer = await xBearer(); if(!bearer) return [];
+  const id = fig.xid || await xUserId(bearer, fig.x); if(!id) return [];
+  const url = 'https://api.twitter.com/2/users/' + id + '/tweets?max_results=' + X_MAX + '&exclude=retweets,replies&tweet.fields=created_at,public_metrics';
+  const r = await fetch(url, { headers:{ 'Authorization':'Bearer ' + bearer }, signal: AbortSignal.timeout(9000) });
+  if(!r.ok) throw new Error('x read HTTP ' + r.status);
+  const j = await r.json();
+  return (j.data || []).map(t => {
+    const m = t.public_metrics || {};
+    return { figId: fig.id, figure: fig.name, handle: fig.handle, platform: fig.platform,
+      id: t.id, text: clean(t.text || ''), url: 'https://x.com/' + fig.x + '/status/' + t.id,
+      ts: Date.parse(t.created_at) || 0, media: [],
+      eng: (m.like_count||0) + (m.retweet_count||0) + (m.reply_count||0) + (m.quote_count||0) };
+  }).filter(p => p.id && p.text);
+}
+async function fetchXAll(){
+  const xfigs = FIGURES.filter(f => f.x);
+  if(!xfigs.length) return [];
+  if(_xCache.at && Date.now() - _xCache.at < X_POLL_MS) return _xCache.posts;
+  try{
+    const res = (await Promise.all(xfigs.map(f => fetchX(f).catch(() => [])))).flat();
+    _xCache = { at: Date.now(), posts: res };
+  }catch(e){ _xCache.at = Date.now(); }
+  return _xCache.posts;
 }
 
 async function fetchFigure(fig){
@@ -95,9 +142,11 @@ async function fetchFigure(fig){
 }
 
 async function refresh(){
-  const all = (await Promise.all(FIGURES.map(fetchFigure))).flat();
+  const nonX = FIGURES.filter(f => !f.x);
+  const a = (await Promise.all(nonX.map(fetchFigure))).flat();
+  const b = await fetchXAll();
   const seen = new Set(), posts = [];
-  for(const p of all.sort((a, b) => b.ts - a.ts)){ if(p.id && !seen.has(p.id) && isSubstantive(p.text)){ seen.add(p.id); posts.push(p); } }
+  for(const p of a.concat(b).sort((x, y) => y.ts - x.ts)){ if(p.id && !seen.has(p.id) && isSubstantive(p.text)){ seen.add(p.id); posts.push(p); } }
   cache = { at: Date.now(), posts };
   return cache;
 }
@@ -122,8 +171,7 @@ function pickNotable(opts){
     p.text && p.text.length >= 15 &&
     (!opts.figId || p.figId === opts.figId) &&
     (now - (p.ts || 0)) / 3600000 <= maxAgeH &&
-    (!opts.exclude || p.id !== opts.exclude)
-  );
+    (!opts.exclude || p.id !== opts.exclude));
   if(!cand.length) return null;
   cand.sort((a, b) => score(b, now) - score(a, now));
   return cand[0];
