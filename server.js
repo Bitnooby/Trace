@@ -1659,7 +1659,7 @@ async function dailyCardImg(built){
 function igCaption(built){
   const head = (built && built.title) || '';
   const n = (built && built.n) || 0;
-  return '\uD83D\uDCF0 '+head+'\n\nReported by '+n+' independent newsrooms right now \u2014 corroborated, not just viral.\n\nSee what\u2019s confirmed vs what\u2019s just loud \u2192 relity.ai/feed\n\n#news #factcheck #medialiteracy #misinformation #verifybeforeyoushare #Relity';
+  return '\uD83D\uDCF0 '+head+'\n\nReported by '+n+' independent newsrooms right now \u2014 corroborated, not just viral.\n\nSee what\u2019s confirmed vs what\u2019s just loud.\n\n\uD83D\uDD17 Full feed \u2014 link in bio: relity.ai\n\n#news #factcheck #medialiteracy #misinformation #verifybeforeyoushare #Relity';
 }
 function igEnabled(){ return process.env.IG_AUTOPOST_ENABLED==='1' || process.env.IG_AUTOPOST_ENABLED==='true'; }
 app.get('/card/daily.jpg', async (req,res) => {
