@@ -10,7 +10,7 @@
 const FIGURES = [
   { id:'trump',    name:'Donald J. Trump',          handle:'@realDonaldTrump', platform:'Truth Social',
     json:'https://ix.cnn.io/data/truth-social/truth_archive.json', rss:'https://trumpstruth.org/feed' },
-  { id:'aoc',      name:'Alexandria Ocasio-Cortez', handle:'@AOC',       platform:'X', x:'AOC' },
+  { id:'aoc',      name:'Alexandria Ocasio-Cortez', handle:'@aoc.bsky.social', platform:'Bluesky', bsky:'aoc.bsky.social' },
   { id:'araghchi', name:'Abbas Araghchi',           handle:'@araghchi',  platform:'X', x:'araghchi' }
 ];
 
