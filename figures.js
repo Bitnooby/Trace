@@ -69,10 +69,18 @@ async function fetchFigure(fig){
   return [];
 }
 
+function isSubstantive(t){
+  t = (t || '').trim();
+  if(t.length < 15) return false;
+  if(/^RT[:\s]/i.test(t)) return false;
+  if(/^https?:\/\/\S+$/i.test(t)) return false;
+  const words = t.replace(/https?:\/\/\S+/g, ' ').replace(/[^A-Za-z ]/g, ' ').split(/\s+/).filter(w => w.length > 2);
+  return words.length >= 4;
+}
 async function refresh(){
   const all = (await Promise.all(FIGURES.map(fetchFigure))).flat();
   const seen = new Set(), posts = [];
-  for(const p of all.sort((a, b) => b.ts - a.ts)){ if(p.id && !seen.has(p.id)){ seen.add(p.id); posts.push(p); } }
+  for(const p of all.sort((a, b) => b.ts - a.ts)){ if(p.id && !seen.has(p.id) && isSubstantive(p.text)){ seen.add(p.id); posts.push(p); } }
   cache = { at: Date.now(), posts };
   return cache;
 }
