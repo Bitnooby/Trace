@@ -1739,8 +1739,8 @@ app.get('/onrecord', async (req,res) => {
 async function figGet(k){ if(redisOn){ try{ const v=await redisCmd(['GET',k]); if(v!=null) return v; }catch(e){} } return memX[k]; }
 async function figSet(k,v,ex){ memX[k]=v; if(redisOn){ try{ await redisCmd(ex?['SET',k,String(v),'EX',String(ex)]:['SET',k,String(v)]); }catch(e){} } }
 const FIG_CAP = parseInt(process.env.FIGURE_MAX_PER_DAY||'3',10);
-const FIG_GAP_GLOBAL_MS = (parseInt(process.env.FIGURE_GLOBAL_GAP_MIN||'40',10))*60000;
-const FIG_GAP_FIG_MS = (parseInt(process.env.FIGURE_FIGURE_GAP_MIN||'180',10))*60000;
+const FIG_GAP_GLOBAL_MS = (parseInt(process.env.FIGURE_GLOBAL_GAP_MIN||'10',10))*60000;
+const FIG_GAP_FIG_MS = (parseInt(process.env.FIGURE_FIGURE_GAP_MIN||'60',10))*60000;
 const FIG_WINDOW_H = parseInt(process.env.FIGURE_WINDOW_HOURS||'24',10);
 // Prompt + capped: every tick, pick the single best eligible NEW post across figures and post it.
 // Per-figure daily cap + min interval, plus a global spacing so posts never burst.
@@ -1849,4 +1849,4 @@ app.get('/api/autopost/test', async (req,res) => {
   res.json({ ok:!!(r&&r.ok), id:(r&&r.id)||null, error:(r&&r.error)||null, channel:ch, text: (ch==='ig'||ch==='instagram')?igCaption(built):built.text });
 });
 
-app.listen(PORT, () => { console.log(`Relity running on http://localhost:${PORT}`); telegram.register(); setInterval(nlTick, 5 * 60 * 1000); setInterval(watchTick, 3 * 60 * 60 * 1000); setInterval(autoPostTick, 5 * 60 * 1000); setInterval(figureTick, 5 * 60 * 1000); });
+app.listen(PORT, () => { console.log(`Relity running on http://localhost:${PORT}`); telegram.register(); setInterval(nlTick, 5 * 60 * 1000); setInterval(watchTick, 3 * 60 * 60 * 1000); setInterval(autoPostTick, 5 * 60 * 1000); setInterval(figureTick, 2 * 60 * 1000); });

@@ -15,7 +15,7 @@ const FIGURES = [
 ];
 
 const UA = { 'User-Agent': 'RelityRadar/1.0 (+https://relity.ai)' };
-const CACHE_MS = 5 * 60 * 1000;
+const CACHE_MS = 3 * 60 * 1000;
 const X_POLL_MS = parseInt(process.env.FIGURE_X_POLL_MIN || '60', 10) * 60000;
 const X_MAX = Math.max(5, Math.min(100, parseInt(process.env.FIGURE_X_MAX || '5', 10)));
 let cache = { at: 0, posts: [] };
