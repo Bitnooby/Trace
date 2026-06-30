@@ -1713,15 +1713,26 @@ app.get('/api/figures', async (req,res) => {
 app.get('/onrecord', async (req,res) => {
   const base = `${req.protocol}://${req.get('host')}`;
   const e = t => (t==null?'':String(t)).replace(/[<>&"]/g, c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]));
-  let posts=[]; try{ const d=await figures.getPosts(); posts=(d.posts||[]).slice(0,60); }catch(_){}
+  let posts=[]; try{ const d=await figures.getPosts(); posts=d.posts||[]; }catch(_){}
   const now=Date.now();
-  posts = posts.slice().sort((a,b)=>figures.score(b,now)-figures.score(a,now)).slice(0,30);
-  const items = posts.map(p=>{
-    const q = e(clip(p.text,700)).replace(/\n/g,'<br>');
-    return `<div style="background:#fff;border:1px solid var(--line);border-left:4px solid var(--signal);border-radius:12px;padding:16px 18px;margin:0 0 14px"><div style="font-family:'Space Grotesk',system-ui,sans-serif;font-weight:600;font-size:13.5px;color:var(--g);margin-bottom:9px">${e(p.figure)} <span style="color:#8A95A4">${e(p.handle)}</span> · ${e(p.platform)} · ${e(figDate(p.ts))}</div><div style="font-size:16px;line-height:1.5;color:var(--ink);white-space:pre-wrap">${q}</div><a href="${e(p.url)}" target="_blank" rel="noopener" style="display:inline-block;margin-top:11px;color:var(--signal);font-weight:600;font-size:13.5px;text-decoration:none">View the original post →</a></div>`;
+  const byFig={};
+  for(const p of posts){ (byFig[p.figId]=byFig[p.figId]||[]).push(p); }
+  for(const k in byFig){ byFig[k].sort((a,b)=>figures.score(b,now)-figures.score(a,now)); }
+  const itemHtml = p => `<div style="background:#fff;border:1px solid var(--line);border-left:4px solid var(--signal);border-radius:12px;padding:15px 17px;margin:0 0 12px"><div style="font-size:12.5px;color:#8A95A4;font-family:'Space Grotesk',system-ui,sans-serif;font-weight:600;margin-bottom:8px">${e(figDate(p.ts))}</div><div style="font-size:15.5px;line-height:1.5;color:var(--ink);white-space:pre-wrap">${e(clip(p.text,560)).replace(/\n/g,'<br>')}</div><a href="${e(p.url)}" target="_blank" rel="noopener" style="display:inline-block;margin-top:10px;color:var(--signal);font-weight:600;font-size:13px;text-decoration:none">View the original →</a></div>`;
+  const sections = figures.FIGURES.map(fig=>{
+    const arr=(byFig[fig.id]||[]).slice(0,6);
+    if(!arr.length) return '';
+    return `<div style="margin:0 0 28px"><div style="display:flex;align-items:baseline;gap:9px;border-bottom:2px solid var(--line);padding-bottom:7px;margin-bottom:14px"><span style="font-family:'Space Grotesk',system-ui,sans-serif;font-weight:700;font-size:19px;color:var(--ink)">${e(fig.name)}</span><span style="font-size:12.5px;color:#8A95A4">${e(fig.handle)} · ${e(fig.platform)}</span></div>${arr.map(itemHtml).join('')}</div>`;
   }).join('');
-  const og = `\n    <meta property="og:title" content="Relity — On the Record" />\n    <meta property="og:description" content="What public figures actually posted, verbatim, with the original linked. Primary source — evidence, not verdicts." />\n    <meta property="og:type" content="website" />\n    <meta property="og:image" content="${base}/og-card.png" />\n    <meta property="og:site_name" content="Relity" />\n    <meta name="twitter:card" content="summary_large_image" />\n    <meta name="twitter:site" content="@RelityAi" />`;
-  const body = `<div class="thead"><h1 class="th1">On the Record</h1><p class="tsub">What public figures <b>actually posted</b> — verbatim, with the original linked. The primary source, before it becomes a copy of a copy. <b>Evidence, not verdicts.</b> <a href="${base}/feed" style="color:var(--signal);font-weight:600;text-decoration:none">News feed →</a></p></div>${items ? items : `<p class="tempty">Fetching the latest posts — refresh in a moment.</p>`}<a class="cta" href="${base}/">Check anything →</a>`;
+  const og = `
+    <meta property="og:title" content="Relity — On the Record" />
+    <meta property="og:description" content="What public figures actually posted, verbatim, with the original linked. No sides — a verified statement from everyone. Evidence, not verdicts." />
+    <meta property="og:type" content="website" />
+    <meta property="og:image" content="${base}/og-card.png" />
+    <meta property="og:site_name" content="Relity" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:site" content="@RelityAi" />`;
+  const body = `<div class="thead"><h1 class="th1">On the Record</h1><p class="tsub">What public figures <b>actually posted</b> — verbatim, with the original linked. No sides: a verified statement from across the spectrum, straight from the source. <b>Evidence, not verdicts.</b> <a href="${base}/feed" style="color:var(--signal);font-weight:600;text-decoration:none">News feed →</a></p></div>${sections || `<p class="tempty">Fetching the latest posts — refresh in a moment.</p>`}<a class="cta" href="${base}/">Check anything →</a>`;
   res.send(page('Relity — On the Record', body, base, og, true));
 });
 async function figureTick(){
