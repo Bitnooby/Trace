@@ -1736,10 +1736,10 @@ function dailyFigureImg(post){
   }catch(e){ console.error('figure card:', e.message); return null; }
 }
 function figureText(post){
-  return '🚨 BREAKING — per '+post.handle+' on '+post.platform+':\n\n“'+clip(post.text,140)+'”\n\nVerbatim. Original → '+post.url;
+  return '🗞️ JUST IN — '+post.handle+' on '+post.platform+':\n\n“'+clip(post.text,140)+'”\n\nVerbatim. Original → '+post.url;
 }
 function figureIgCaption(post){
-  return '🚨 BREAKING — According to '+post.handle+'’s '+post.platform+' post:\n\n“'+clip(post.text,900)+'”\n\nVerbatim, unedited — primary source. Full statement + the original link in our feed.\n\n🔗 link in bio: relity.ai\n\n#BreakingNews #PrimarySource #news #Relity';
+  return '🗞️ JUST IN — According to '+post.handle+'’s '+post.platform+' post:\n\n“'+clip(post.text,900)+'”\n\nVerbatim, unedited — primary source. Full statement + the original link in our feed.\n\n🔗 link in bio: relity.ai\n\n#JustIn #PrimarySource #news #Relity';
 }
 app.get('/card/figure.jpg', async (req,res) => {
   try{

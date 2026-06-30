@@ -101,7 +101,9 @@ function cluster(items) {
     c.ts = Math.max.apply(null, c.items.map(i => i.ts || 0));
     c.cat = c.rep.cat;
   }
-  clusters.sort((a, b) => b.n - a.n || b.ts - a.ts);
+  const _now = Date.now();
+  const _hot = c => { const ageH = Math.max(0, (_now - (c.ts || _now)) / 3600000); return c.n * (0.3 + 0.7 * Math.exp(-ageH / 18)); };
+  clusters.sort((a, b) => _hot(b) - _hot(a));
   return clusters;
 }
 async function fetchFeed(f) {
