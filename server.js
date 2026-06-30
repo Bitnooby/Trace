@@ -1671,6 +1671,84 @@ app.get('/card/daily.jpg', async (req,res) => {
     res.send(buf);
   }catch(e){ res.status(500).type('text').send('card error'); }
 });
+
+// ---- Primary-source "On the Record" — verbatim posts from key public figures ----
+const figures = require('./figures.js')();
+let _figCache = { key:null, buf:null };
+function figDate(ts){ try { return new Date(ts).toLocaleDateString('en-US',{ month:'long', day:'numeric', year:'numeric' }); } catch(e){ return ''; } }
+function figEnabled(){ return process.env.FIGURE_AUTOPOST_ENABLED==='1' || process.env.FIGURE_AUTOPOST_ENABLED==='true'; }
+function figurePick(){ try { figures.peek(); return figures.pickNotable(); } catch(e){ return null; } }
+function dailyFigureImg(post){
+  try{
+    if(!post) post = figurePick();
+    if(!post || !post.text || !card.available()) return null;
+    if(_figCache.buf && _figCache.key === post.id) return _figCache.buf;
+    const buf = card.renderFigureCard({ handle:post.handle, name:post.figure, platform:post.platform, text:post.text, date:figDate(post.ts) });
+    _figCache = { key:post.id, buf };
+    return buf;
+  }catch(e){ console.error('figure card:', e.message); return null; }
+}
+function figureText(post){
+  return '🚨 BREAKING — per '+post.handle+' on '+post.platform+':\n\n“'+clip(post.text,140)+'”\n\nVerbatim. Original → '+post.url;
+}
+function figureIgCaption(post){
+  return '🚨 BREAKING — According to '+post.handle+'’s '+post.platform+' post:\n\n“'+clip(post.text,900)+'”\n\nVerbatim, unedited — primary source. Full statement + the original link in our feed.\n\n🔗 link in bio: relity.ai\n\n#BreakingNews #PrimarySource #news #Relity';
+}
+app.get('/card/figure.jpg', async (req,res) => {
+  try{
+    await figures.getPosts();
+    const buf = dailyFigureImg();
+    if(!buf) return res.status(404).type('text').send('no figure post available yet');
+    res.set('Content-Type','image/jpeg');
+    res.set('Cache-Control','public, max-age=300');
+    res.send(buf);
+  }catch(e){ res.status(500).type('text').send('figure card error'); }
+});
+app.get('/api/figures', async (req,res) => {
+  if(!isAdmin(req)) return res.status(403).json({ error:'owner only' });
+  try{ await figures.getPosts(); }catch(e){}
+  const post = figurePick();
+  res.json({ ok:!!post, enabled:figEnabled(), post: post ? { figure:post.figure, handle:post.handle, platform:post.platform, ts:post.ts, eng:post.eng, url:post.url, text:post.text } : null, xText: post?figureText(post):null, igCaption: post?figureIgCaption(post):null });
+});
+app.get('/onrecord', async (req,res) => {
+  const base = `${req.protocol}://${req.get('host')}`;
+  const e = t => (t==null?'':String(t)).replace(/[<>&"]/g, c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]));
+  let posts=[]; try{ const d=await figures.getPosts(); posts=(d.posts||[]).slice(0,60); }catch(_){}
+  const now=Date.now();
+  posts = posts.slice().sort((a,b)=>figures.score(b,now)-figures.score(a,now)).slice(0,30);
+  const items = posts.map(p=>{
+    const q = e(clip(p.text,700)).replace(/\n/g,'<br>');
+    return `<div style="background:#fff;border:1px solid var(--line);border-left:4px solid var(--signal);border-radius:12px;padding:16px 18px;margin:0 0 14px"><div style="font-family:'Space Grotesk',system-ui,sans-serif;font-weight:600;font-size:13.5px;color:var(--g);margin-bottom:9px">${e(p.figure)} <span style="color:#8A95A4">${e(p.handle)}</span> · ${e(p.platform)} · ${e(figDate(p.ts))}</div><div style="font-size:16px;line-height:1.5;color:var(--ink);white-space:pre-wrap">${q}</div><a href="${e(p.url)}" target="_blank" rel="noopener" style="display:inline-block;margin-top:11px;color:var(--signal);font-weight:600;font-size:13.5px;text-decoration:none">View the original post →</a></div>`;
+  }).join('');
+  const og = `\n    <meta property="og:title" content="Relity — On the Record" />\n    <meta property="og:description" content="What public figures actually posted, verbatim, with the original linked. Primary source — evidence, not verdicts." />\n    <meta property="og:type" content="website" />\n    <meta property="og:image" content="${base}/og-card.png" />\n    <meta property="og:site_name" content="Relity" />\n    <meta name="twitter:card" content="summary_large_image" />\n    <meta name="twitter:site" content="@RelityAi" />`;
+  const body = `<div class="thead"><h1 class="th1">On the Record</h1><p class="tsub">What public figures <b>actually posted</b> — verbatim, with the original linked. The primary source, before it becomes a copy of a copy. <b>Evidence, not verdicts.</b> <a href="${base}/feed" style="color:var(--signal);font-weight:600;text-decoration:none">News feed →</a></p></div>${items ? items : `<p class="tempty">Fetching the latest posts — refresh in a moment.</p>`}<a class="cta" href="${base}/">Check anything →</a>`;
+  res.send(page('Relity — On the Record', body, base, og, true));
+});
+async function figureTick(){
+  try{
+    if(!figEnabled()) return;
+    const now=new Date();
+    if(now.getUTCHours()!==xHour()) return;
+    const day=now.toISOString().slice(0,10);
+    await figures.getPosts();
+    const fp = figurePick();
+    if(!fp) return;
+    const chans=[
+      { name:'figx',  on:x.configured(),     post:()=>x.postTweet(figureText(fp)) },
+      { name:'figfb', on:meta.fbConfigured(), post:()=>meta.postFacebook(figureText(fp), fp.url) },
+      { name:'figig', on:meta.igConfigured(), post:async()=>{ const buf=dailyFigureImg(fp); if(!buf) return {ok:false,error:'no figure card'}; return meta.postInstagram(figureIgCaption(fp), BASE+'/card/figure.jpg?d='+day); } }
+    ];
+    for(const ch of chans){
+      if(!ch.on) continue;
+      if((await chDayGet(ch.name))===day) continue;
+      await chDaySet(ch.name, day);
+      const r=await ch.post();
+      if(r&&r.ok) console.log('figpost '+ch.name+' ok', r.id||'');
+      else console.error('figpost '+ch.name+' failed:', (r&&r.error)||'?');
+    }
+  }catch(e){ console.error('figureTick:', e.message); }
+}
+
 function fbEnabled(){ return process.env.FB_AUTOPOST_ENABLED==='1' || process.env.FB_AUTOPOST_ENABLED==='true'; }
 function thEnabled(){ return process.env.THREADS_AUTOPOST_ENABLED==='1' || process.env.THREADS_AUTOPOST_ENABLED==='true'; }
 async function chDayGet(ch){ const k='relity:ap:'+ch+':day'; if(redisOn){ try{ const v=await redisCmd(['GET',k]); if(v) return v; }catch(e){} } return memX['day_'+ch]||null; }
@@ -1714,6 +1792,15 @@ app.get('/api/autopost', async (req,res) => {
 app.get('/api/autopost/test', async (req,res) => {
   if(!isAdmin(req)) return res.status(403).json({ error:'owner only' });
   const ch=String(req.query.ch||'').toLowerCase();
+  if(ch==='figure'||ch==='fig'){
+    await figures.getPosts(); const fp=figurePick();
+    if(!fp) return res.json({ ok:false, error:'no figure post available yet' });
+    const fbuf=dailyFigureImg(fp);
+    if(!fbuf) return res.json({ ok:false, error:'no figure card (renderer/story missing)' });
+    const d2=new Date().toISOString().slice(0,10);
+    const fr=await meta.postInstagram(figureIgCaption(fp), BASE+'/card/figure.jpg?d='+d2);
+    return res.json({ ok:!!(fr&&fr.ok), id:(fr&&fr.id)||null, error:(fr&&fr.error)||null, channel:'figure', source:fp.url, caption:figureIgCaption(fp) });
+  }
   const built=await buildDailyXPost();
   if(!built) return res.json({ ok:false, error:'no corroborated story cached yet — try again in a minute' });
   let r;
@@ -1725,4 +1812,4 @@ app.get('/api/autopost/test', async (req,res) => {
   res.json({ ok:!!(r&&r.ok), id:(r&&r.id)||null, error:(r&&r.error)||null, channel:ch, text: (ch==='ig'||ch==='instagram')?igCaption(built):built.text });
 });
 
-app.listen(PORT, () => { console.log(`Relity running on http://localhost:${PORT}`); telegram.register(); setInterval(nlTick, 5 * 60 * 1000); setInterval(watchTick, 3 * 60 * 60 * 1000); setInterval(autoPostTick, 5 * 60 * 1000); });
+app.listen(PORT, () => { console.log(`Relity running on http://localhost:${PORT}`); telegram.register(); setInterval(nlTick, 5 * 60 * 1000); setInterval(watchTick, 3 * 60 * 60 * 1000); setInterval(autoPostTick, 5 * 60 * 1000); setInterval(figureTick, 5 * 60 * 1000); });

@@ -93,12 +93,60 @@ function buildSvg({ title, n, cat }){
 </svg>`;
 }
 
-function renderCard(pick){
-  if(!Resvg || !jpegjs) throw new Error('image renderer unavailable (@resvg/resvg-js or jpeg-js missing)');
-  const svg = buildSvg({ title: pick && pick.title, n: (pick && pick.n) || 0, cat: (pick && pick.cat) || '' });
-  const img = new Resvg(svg, { background:'#0C1A1A', font:{ loadSystemFonts:false, fontFiles: FONT_FILES, defaultFontFamily:'Poppins' }, fitTo:{ mode:'width', value:1080 } }).render();
-  const out = jpegjs.encode({ data: Buffer.from(img.pixels), width: img.width, height: img.height }, 90);
-  return out.data;
+function buildFigureSvg({ handle, name, platform, text, date }){
+  const t = String(text || '').replace(/\s+/g, ' ').trim();
+  const L = t.length;
+  let size;
+  if(L<=110) size=50; else if(L<=220) size=42; else if(L<=380) size=36; else if(L<=560) size=31; else size=27;
+  const usable = 1080 - 124 - 80;
+  const cpl = Math.max(12, Math.floor(usable / (size*0.56)));
+  const lh = Math.round(size*1.34);
+  const maxLines = Math.max(3, Math.floor(560 / lh));
+  const lines = wrap(t, cpl, maxLines);
+  const headSpan = (lines.length-1)*lh;
+  const attrGap = 82;
+  const totalH = headSpan + attrGap;
+  let y0 = Math.round(552 - totalH/2);
+  if(y0 < 300) y0 = 300;
+  let lastBaseline = y0 + headSpan;
+  let attrY = lastBaseline + attrGap;
+  if(attrY > 926){ const shift = attrY - 926; y0 = Math.max(292, y0 - shift); lastBaseline = y0 + headSpan; attrY = lastBaseline + attrGap; }
+  const barTop = y0 - size + 10;
+  const barH = Math.max(20, (lastBaseline + 8) - barTop);
+  const quote = lines.map((ln,i)=>`<text x="124" y="${y0 + i*lh}" font-family="${F_MED}" font-weight="500" font-size="${size}" fill="#F4FAFA">${esc(ln)}</text>`).join('\n  ');
+  return `<svg width="1080" height="1080" viewBox="0 0 1080 1080" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0B6E6E"/><stop offset="1" stop-color="#13A8A8"/></linearGradient>
+    <radialGradient id="glow" cx="0.16" cy="0.10" r="0.95"><stop offset="0" stop-color="#13A8A8" stop-opacity="0.30"/><stop offset="0.55" stop-color="#0C1A1A" stop-opacity="0"/></radialGradient>
+  </defs>
+  <rect width="1080" height="1080" fill="#0C1A1A"/>
+  <rect width="1080" height="1080" fill="url(#glow)"/>
+  ${glyph(80,76,60)}
+  <text x="168" y="113" font-family="${F_BOLD}" font-weight="700" font-size="30" fill="#FFFFFF" letter-spacing="4">RELITY</text>
+  <text x="170" y="143" font-family="${F_MED}" font-weight="500" font-size="14" fill="#5FB8B8" letter-spacing="2">ON THE RECORD</text>
+  <text x="1000" y="112" text-anchor="end" font-family="${F_MED}" font-weight="500" font-size="17" fill="#5FB8B8" letter-spacing="2">${esc(String(platform||'').toUpperCase())}</text>
+  <rect x="80" y="192" width="920" height="2" fill="#1E3A3A"/>
+  <rect x="84" y="${barTop}" width="6" height="${barH}" rx="3" fill="#13A8A8"/>
+  ${quote}
+  <text x="124" y="${attrY}" font-family="${F_BOLD}" font-weight="700" font-size="25" fill="#FFFFFF">— ${esc(String(name||''))} <tspan font-family="${F_MED}" font-weight="500" fill="#9FD8D8">· ${esc(String(date||''))}</tspan></text>
+  <rect x="80" y="950" width="920" height="2" fill="#1E3A3A"/>
+  <text x="80" y="1002" font-family="${F_MED}" font-weight="500" font-size="20" fill="#6FA0A0">Primary source, unedited — original linked</text>
+  <text x="1000" y="1002" text-anchor="end" font-family="${F_BOLD}" font-weight="700" font-size="21" fill="#FFFFFF">relity.ai</text>
+</svg>`;
 }
 
-module.exports = { renderCard, buildSvg, available: ()=>!!(Resvg && jpegjs) };
+function _toJpeg(svg){
+  if(!Resvg || !jpegjs) throw new Error('image renderer unavailable (@resvg/resvg-js or jpeg-js missing)');
+  const img = new Resvg(svg, { background:'#0C1A1A', font:{ loadSystemFonts:false, fontFiles: FONT_FILES, defaultFontFamily:'Poppins' }, fitTo:{ mode:'width', value:1080 } }).render();
+  return jpegjs.encode({ data: Buffer.from(img.pixels), width: img.width, height: img.height }, 90).data;
+}
+
+function renderCard(pick){
+  return _toJpeg(buildSvg({ title: pick && pick.title, n: (pick && pick.n) || 0, cat: (pick && pick.cat) || '' }));
+}
+
+function renderFigureCard(post){
+  return _toJpeg(buildFigureSvg({ handle: post && post.handle, name: (post && (post.name || post.figure)) || '', platform: (post && post.platform) || '', text: (post && post.text) || '', date: (post && post.date) || '' }));
+}
+
+module.exports = { renderCard, renderFigureCard, buildSvg, buildFigureSvg, available: ()=>!!(Resvg && jpegjs) };
