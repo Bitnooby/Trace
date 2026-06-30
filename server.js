@@ -954,9 +954,10 @@ app.get('/feed', async (req, res) => {
     const chips = c.items.slice(0,6).map(i=>`<a class="fd-chip" href="${esc(i.link)}" target="_blank" rel="noopener noreferrer">${esc(i.outlet)}</a>`).join('');
     return `<div class="fd-card fd-${conf}"><div class="fd-meta"><span class="fd-pill fd-pill-${conf}">${esc(pill)}</span><span class="fd-cat">${esc(c.cat)}</span><span class="fd-time">${esc(relTime(c.ts))}</span></div><a class="fd-title" href="${esc(c.rep.link)}" target="_blank" rel="noopener noreferrer">${esc(c.rep.title)}</a><div class="fd-chips">${chips}</div></div>`;
   };
+  const miniCard = c => `<a class="fd-mini" href="${esc(c.rep.link)}" target="_blank" rel="noopener noreferrer"><div class="fd-mini-t">${esc(c.rep.title)}</div><div class="fd-mini-m">${esc((c.items[0]||{}).outlet||'')} \u00b7 ${esc(relTime(c.ts))}</div></a>`;
   const tabs = Object.keys(CATL).map(k=>`<a class="fd-tab ${cat===k?'on':''}" href="${base}/feed${k==='all'?'':'?cat='+k}">${esc(CATL[k])}</a>`).join('');
   const hasAny = corrob.length || single.length;
-  const body = `<div class="fd"><div class="fd-head"><div class="rad-eyebrow">Relity News Radar</div><h1 class="rad-h1">Corroborated news</h1><p class="rad-sub">The <b>“what’s real”</b> side of Relity — checking the news instead of a single image. Stories ranked by how many independent newsrooms are carrying them right now. <b>Corroboration is breadth of reporting, not proof of truth</b> — it shows how widely a story is being reported, then you read it yourself. Tracking ${esc(outlets)}.</p><div class="fd-tabs">${tabs}</div></div>${corrob.length?`<div class="fd-list">${corrob.slice(0,40).map(card).join('')}</div>`:(hasAny?'<p class="fd-note">No multi-outlet stories in this category right now — see single-source below.</p>':'')}${single.length?`<div class="fd-subhead">Reported by a single outlet so far</div><div class="fd-list fd-list-dim">${single.map(card).join('')}</div>`:''}${!hasAny?'<p class="rad-empty">The feed is warming up — refresh in a moment.</p>':''}<div class="rad-foot">Refreshes every few minutes. <a href="${base}/radar">What’s circulating →</a> · <a href="https://x.com/intent/tweet?text=${encodeURIComponent('🔎 Relity — corroborated news right now: what multiple independent newsrooms are carrying. Breadth of reporting, not a verdict:')}&url=${encodeURIComponent(base+'/feed')}" target="_blank" rel="noopener noreferrer">Share on X →</a></div></div>`;
+  const body = `<div class="fd"><div class="fd-head"><div class="rad-eyebrow">Relity News Radar</div><h1 class="rad-h1">Corroborated news</h1><p class="rad-sub">The <b>“what’s real”</b> side of Relity — checking the news instead of a single image. Stories ranked by how many independent newsrooms are carrying them right now. <b>Corroboration is breadth of reporting, not proof of truth</b> — it shows how widely a story is being reported, then you read it yourself. Tracking ${esc(outlets)}.</p><div class="fd-tabs">${tabs}</div></div><div class="fd-cols"><div class="fd-main">${corrob.length?`<div class="fd-grid">${corrob.slice(0,40).map(card).join('')}</div>`:(hasAny?'<p class="fd-note">No multi-outlet stories in this category right now.</p>':'')}</div><aside class="fd-side"><div class="fd-side-h">Single source so far</div><div>${single.length?single.slice(0,18).map(miniCard).join(''):'<p class="fd-note" style="margin:8px 0">Nothing single-source right now.</p>'}</div></aside></div>${!hasAny?'<p class="rad-empty">The feed is warming up — refresh in a moment.</p>':''}<div class="rad-foot">Refreshes every few minutes. <a href="${base}/radar">What’s circulating →</a> · <a href="https://x.com/intent/tweet?text=${encodeURIComponent('🔎 Relity — corroborated news right now: what multiple independent newsrooms are carrying. Breadth of reporting, not a verdict:')}&url=${encodeURIComponent(base+'/feed')}" target="_blank" rel="noopener noreferrer">Share on X →</a></div></div>`;
   const og = `\n    <meta property="og:title" content="Relity News Radar — corroborated news" />\n    <meta property="og:description" content="News ranked by how many independent newsrooms carry each story. Corroboration is breadth of reporting, not proof — evidence, not a verdict." />\n    <meta property="og:type" content="website" />\n    <meta property="og:image" content="${base}/og-card.png" />\n    <meta name="twitter:card" content="summary_large_image" />\n    <meta property="og:site_name" content="Relity" />\n    <meta name="twitter:site" content="@RelityAi" />`;
   res.send(page('Relity News Radar — corroborated news', body, base, og, true));
 });
@@ -1401,7 +1402,7 @@ function page(title, body, base, og, wide) {
     .rad-feed{display:flex;flex-direction:column;background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:4px 15px}
     .rad-feed .rad-item:first-child{border-top:none}
     .rad-empty{color:var(--g);font-size:15px;text-align:center;padding:36px 0}
-    .fd{max-width:820px;margin:0 auto;padding:4px 0 44px}
+    .fd{max-width:1040px;margin:0 auto;padding:4px 0 44px}
     .fd-head{margin:6px 0 18px}
     .fd-tabs{display:inline-flex;flex-wrap:wrap;gap:4px;margin-top:14px;background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:3px}
     .fd-tab{font-family:'Space Grotesk',system-ui,sans-serif;font-weight:600;font-size:13px;color:var(--g);text-decoration:none;padding:6px 13px;border-radius:8px}
@@ -1426,6 +1427,16 @@ function page(title, body, base, og, wide) {
     .fd-chip{font-size:11.5px;color:var(--g);text-decoration:none;background:var(--paper);border:1px solid var(--line);border-radius:7px;padding:2px 8px}
     .fd-chip:hover{color:var(--signal);border-color:var(--signal)}
     .fd-note{color:var(--g);font-size:14px;margin:10px 0}
+    .fd-cols{display:flex;gap:24px;align-items:flex-start}
+    .fd-main{flex:1 1 0;min-width:0}
+    .fd-grid{display:grid;grid-template-columns:1fr 1fr;gap:13px}
+    .fd-side{flex:0 0 288px;position:sticky;top:14px}
+    .fd-side-h{font-family:'Space Grotesk',system-ui,sans-serif;font-weight:700;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:#8A95A4;margin:0 0 2px;padding-bottom:9px;border-bottom:2px solid var(--line)}
+    .fd-mini{display:block;padding:11px 2px;border-bottom:1px solid var(--line);text-decoration:none}
+    .fd-mini:hover .fd-mini-t{color:var(--signal)}
+    .fd-mini-t{font-family:'Space Grotesk',system-ui,sans-serif;font-weight:600;font-size:13.5px;line-height:1.35;color:var(--ink)}
+    .fd-mini-m{font-size:11px;color:#8A95A4;margin-top:4px;font-family:ui-monospace,monospace}
+    @media(max-width:860px){.fd-cols{flex-direction:column}.fd-side{position:static;flex:1 1 auto;width:100%}.fd-grid{grid-template-columns:1fr}}
     .article{max-width:680px;margin:0 auto;padding:6px 0 44px}
     .article-back{display:inline-block;color:var(--signal);text-decoration:none;font-family:'Space Grotesk',system-ui,sans-serif;font-weight:600;font-size:13px;letter-spacing:.04em;margin-bottom:18px}
     .article-h1{font-family:'Space Grotesk',system-ui,sans-serif;font-weight:700;font-size:31px;line-height:1.15;letter-spacing:-.02em;margin:0 0 8px;color:var(--ink)}
