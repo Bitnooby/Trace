@@ -954,7 +954,8 @@ app.get('/feed', async (req, res) => {
     const chips = c.items.slice(0,6).map(i=>`<a class="fd-chip" href="${esc(i.link)}" target="_blank" rel="noopener noreferrer">${esc(i.outlet)}</a>`).join('');
     return `<div class="fd-card fd-${conf}"><div class="fd-meta"><span class="fd-pill fd-pill-${conf}">${esc(pill)}</span><span class="fd-cat">${esc(c.cat)}</span><span class="fd-time">${esc(relTime(c.ts))}</span></div><a class="fd-title" href="${esc(c.rep.link)}" target="_blank" rel="noopener noreferrer">${esc(c.rep.title)}</a><div class="fd-chips">${chips}</div></div>`;
   };
-  const miniCard = c => `<a class="fd-mini" href="${esc(c.rep.link)}" target="_blank" rel="noopener noreferrer"><div class="fd-mini-t">${esc(c.rep.title)}</div><div class="fd-mini-m">${esc((c.items[0]||{}).outlet||'')} \u00b7 ${esc(relTime(c.ts))}</div></a>`;
+  const catCls={world:'fd-cat-world',tech:'fd-cat-tech',business:'fd-cat-business',science:'fd-cat-science'};
+  const miniCard = c => `<a class="fd-mini" href="${esc(c.rep.link)}" target="_blank" rel="noopener noreferrer"><span class="fd-mini-cat ${catCls[c.cat]||'fd-cat-x'}">${esc(c.cat||'news')}</span><div class="fd-mini-t">${esc(c.rep.title)}</div><div class="fd-mini-m">${esc((c.items[0]||{}).outlet||'')} · ${esc(relTime(c.ts))}</div></a>`;
   const tabs = Object.keys(CATL).map(k=>`<a class="fd-tab ${cat===k?'on':''}" href="${base}/feed${k==='all'?'':'?cat='+k}">${esc(CATL[k])}</a>`).join('');
   const hasAny = corrob.length || single.length;
   const body = `<div class="fd"><div class="fd-head"><div class="rad-eyebrow">Relity News Radar</div><h1 class="rad-h1">Corroborated news</h1><p class="rad-sub">The <b>“what’s real”</b> side of Relity — checking the news instead of a single image. Stories ranked by how many independent newsrooms are carrying them right now. <b>Corroboration is breadth of reporting, not proof of truth</b> — it shows how widely a story is being reported, then you read it yourself. Tracking ${esc(outlets)}.</p><div class="fd-tabs">${tabs}</div></div><div class="fd-cols"><div class="fd-main">${corrob.length?`<div class="fd-grid">${corrob.slice(0,40).map(card).join('')}</div>`:(hasAny?'<p class="fd-note">No multi-outlet stories in this category right now.</p>':'')}</div><aside class="fd-side"><div class="fd-side-h">Single source news</div><div>${single.length?single.slice(0,18).map(miniCard).join(''):'<p class="fd-note" style="margin:8px 0">Nothing single-source right now.</p>'}</div></aside></div>${!hasAny?'<p class="rad-empty">The feed is warming up — refresh in a moment.</p>':''}<div class="rad-foot">Refreshes every few minutes. <a href="${base}/radar">What’s circulating →</a> · <a href="https://x.com/intent/tweet?text=${encodeURIComponent('🔎 Relity — corroborated news right now: what multiple independent newsrooms are carrying. Breadth of reporting, not a verdict:')}&url=${encodeURIComponent(base+'/feed')}" target="_blank" rel="noopener noreferrer">Share on X →</a></div></div>`;
@@ -1436,6 +1437,12 @@ function page(title, body, base, og, wide) {
     .fd-mini:hover .fd-mini-t{color:var(--signal)}
     .fd-mini-t{font-family:'Space Grotesk',system-ui,sans-serif;font-weight:600;font-size:13.5px;line-height:1.35;color:var(--ink)}
     .fd-mini-m{font-size:11px;color:#8A95A4;margin-top:4px;font-family:ui-monospace,monospace}
+    .fd-mini-cat{display:inline-block;font-family:ui-monospace,monospace;font-size:9px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;padding:1px 6px;border-radius:5px;margin-bottom:5px}
+    .fd-cat-world{background:#ECF0F6;color:#3C5E8A}
+    .fd-cat-tech{background:#EDEBFA;color:#5B4BC4}
+    .fd-cat-business{background:#F3ECDE;color:#8A6A2E}
+    .fd-cat-science{background:#E8F1EC;color:#2E7D5A}
+    .fd-cat-x{background:var(--paper);color:#8A95A4}
     @media(max-width:860px){.fd-cols{flex-direction:column}.fd-side{position:static;flex:1 1 auto;width:100%}.fd-grid{grid-template-columns:1fr}}
     .article{max-width:680px;margin:0 auto;padding:6px 0 44px}
     .article-back{display:inline-block;color:var(--signal);text-decoration:none;font-family:'Space Grotesk',system-ui,sans-serif;font-weight:600;font-size:13px;letter-spacing:.04em;margin-bottom:18px}
